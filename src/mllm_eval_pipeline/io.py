@@ -15,3 +15,9 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
     with path.open("w") as file:
         for record in records:
             file.write(json.dumps(record) + "\n")
+
+
+def write_json(path: Path, results: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as file:
+        json.dump(results, file)

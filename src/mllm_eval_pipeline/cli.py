@@ -5,6 +5,7 @@ from mllm_eval_pipeline.dataset import (
     preprocess_mathvision,
 )
 from mllm_eval_pipeline.inference import run_mathvision_inference
+from mllm_eval_pipeline.metrics import evaluate_mathvision
 from mllm_eval_pipeline.parser import parse_predictions
 
 
@@ -16,6 +17,7 @@ def main() -> None:
     subparsers.add_parser("preprocess", help="Preprocess MathVision-testmini")
     subparsers.add_parser("infer", help="Run Qwen2.5-VL inference on MathVision")
     subparsers.add_parser("parse", help="Parse answers from model responses")
+    subparsers.add_parser("evaluate",help="Evaluate parsed MathVision predictions")
 
     args = parser.parse_args()
     if args.command == "download":
@@ -26,6 +28,8 @@ def main() -> None:
         run_mathvision_inference()
     elif args.command == "parse":
         parse_predictions()
+    elif args.command == "evaluate":
+        evaluate_mathvision()
 
 
 if __name__ == "__main__":
