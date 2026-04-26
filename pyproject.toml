@@ -1,0 +1,33 @@
+[project]
+name = "mllm-eval-pipeline"
+version = "0.1.0"
+description = "A multimodal large language model evaluation pipeline."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "ty",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+mllm-eval = "mllm_eval_pipeline.cli:main"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mllm_eval_pipeline"]
+
+[tool.ty.environment]
+python-version = "3.10"
+root = ["./src"]
