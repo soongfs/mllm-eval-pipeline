@@ -30,6 +30,12 @@ def main() -> None:
         help="Run Qwen2.5-VL inference on MathVision",
     )
     add_split_argument(infer_parser)
+    infer_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=1024,
+        help="Maximum number of generated tokens per sample",
+    )
 
     parse_parser = subparsers.add_parser(
         "parse",
@@ -55,7 +61,7 @@ def main() -> None:
     elif args.command == "infer":
         from mllm_eval_pipeline.inference import run_mathvision_inference
 
-        run_mathvision_inference(args.split)
+        run_mathvision_inference(args.split, args.max_tokens)
     elif args.command == "parse":
         from mllm_eval_pipeline.parser import parse_predictions
 

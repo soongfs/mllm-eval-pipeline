@@ -86,11 +86,11 @@ def build_mathvision_requests(
     return requests, records
 
 
-def run_mathvision_inference(split: str) -> None:
+def run_mathvision_inference(split: str, max_tokens: int) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
         temperature=0.0,
-        max_tokens=1024,
+        max_tokens=max_tokens,
     )
 
     requests, records = build_mathvision_requests(split)
