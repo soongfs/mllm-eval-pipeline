@@ -80,7 +80,9 @@ def build_mathvision_requests(
                 "multi_modal_data": {"image": image},
             }
         )
-        records.append(sample)
+        record = sample
+        record["prompt"] = text
+        records.append(record)
     return requests, records
 
 
