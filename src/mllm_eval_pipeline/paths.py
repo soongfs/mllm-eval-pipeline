@@ -36,3 +36,17 @@ def mathvision_result_json(split: str) -> Path:
 
 # Qwen2.5-VL
 QWEN25_VL_3B_MODEL = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+
+# V*
+VSTAR_DATASET_NAME = "craigwu/vstar_bench"
+VSTAR_SPLIT = "test"
+VSTAR_REPO_DIR = RAW_DATA_DIR / "vstar_repo"
+
+
+def vstar_processed_jsonl() -> Path:
+    return PROCESSED_DIR / "vstar" / VSTAR_SPLIT / "samples.jsonl"
+
+
+def vstar_image_dir() -> Path:
+    return PROCESSED_DIR / "vstar" / VSTAR_SPLIT / "images"

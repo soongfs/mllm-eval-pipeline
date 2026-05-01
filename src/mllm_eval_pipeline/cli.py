@@ -2,6 +2,8 @@ import argparse
 
 from mllm_eval_pipeline.paths import MATHVISION_DEFAULT_SPLIT, MATHVISION_SPLITS
 
+DATASETS = ["mathvision", "vstar"]
+
 
 def add_split_argument(command_parser: argparse.ArgumentParser) -> None:
     command_parser.add_argument(
@@ -16,13 +18,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="MLLM evaluation pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    download_parser = subparsers.add_parser("download", help="Download MathVision")
+    download_parser = subparsers.add_parser("download", help="Download a dataset")
+    download_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(download_parser)
 
     preprocess_parser = subparsers.add_parser(
         "preprocess",
-        help="Preprocess MathVision",
+        help="Preprocess a dataset",
     )
+    preprocess_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(preprocess_parser)
 
     infer_parser = subparsers.add_parser(
@@ -51,13 +55,19 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "download":
-        from mllm_eval_pipeline.dataset import download_mathvision
+        from mllm_eval_pipeline.dataset import download_mathvision, download_vstar
 
-        download_mathvision(args.split)
+        if args.dataset == "mathvision":
+            download_mathvision(args.split)
+        elif args.dataset == "vstar":
+            download_vstar()
     elif args.command == "preprocess":
-        from mllm_eval_pipeline.dataset import preprocess_mathvision
+        from mllm_eval_pipeline.dataset import preprocess_mathvision, preprocess_vstar
 
-        preprocess_mathvision(args.split)
+        if args.dataset == "mathvision":
+            preprocess_mathvision(args.split)
+        elif args.dataset == "vstar":
+            preprocess_vstar()
     elif args.command == "infer":
         from mllm_eval_pipeline.inference import run_mathvision_inference
 
