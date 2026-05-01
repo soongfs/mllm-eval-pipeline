@@ -13,10 +13,10 @@ from vllm.inputs import TextPrompt
 
 from mllm_eval_pipeline.io import read_jsonl, write_jsonl
 from mllm_eval_pipeline.paths import (
-    MATHVISION_IMAGE_DIR,
-    MATHVISION_PREDICTIONS_JSONL,
-    MATHVISION_PROCESSED_JSONL,
     QWEN25_VL_3B_MODEL,
+    mathvision_image_dir,
+    mathvision_predictions_jsonl,
+    mathvision_processed_jsonl,
 )
 
 
@@ -54,13 +54,20 @@ def build_mathvision_messages(sample: dict, image_path: Path) -> list[dict[str, 
     ]
 
 
-def build_mathvision_requests() -> tuple[list[TextPrompt], list[dict[str, Any]]]:
+def build_mathvision_requests(
+    split: str,
+) -> tuple[list[TextPrompt], list[dict[str, Any]]]:
+    processed_jsonl = mathvision_processed_jsonl(split)
+    image_dir = mathvision_image_dir(split)
+
     processor = AutoProcessor.from_pretrained(QWEN25_VL_3B_MODEL)
     requests: list[TextPrompt] = []
     records: list[dict[str, Any]] = []
-    for sample in read_jsonl(MATHVISION_PROCESSED_JSONL):
-        image_path = MATHVISION_IMAGE_DIR / f"{sample['id']}.jpg"
-        image = Image.open(image_path)
+
+    for sample in read_jsonl(processed_jsonl):
+        image_path = image_dir / f"{sample['id']}.jpg"
+        with Image.open(image_path) as image_file:
+            image = image_file.copy()
         messages = build_mathvision_messages(sample, image_path)
         text = processor.apply_chat_template(
             messages,
@@ -77,16 +84,16 @@ def build_mathvision_requests() -> tuple[list[TextPrompt], list[dict[str, Any]]]
     return requests, records
 
 
-def run_mathvision_inference() -> None:
+def run_mathvision_inference(split: str) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
         temperature=0.0,
         max_tokens=1024,
     )
 
-    requests, records = build_mathvision_requests()
+    requests, records = build_mathvision_requests(split)
     outputs = llm.generate(requests, sampling_params)
 
     for record, output in zip(records, outputs, strict=True):
         record["response"] = output.outputs[0].text
-    write_jsonl(MATHVISION_PREDICTIONS_JSONL, records)
+    write_jsonl(mathvision_predictions_jsonl(split), records)

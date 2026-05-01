@@ -1,7 +1,7 @@
 from latex2sympy2 import latex2sympy
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
-from mllm_eval_pipeline.paths import MATHVISION_PARSED_JSONL, MATHVISION_RESULT_JSON
+from mllm_eval_pipeline.paths import mathvision_parsed_jsonl, mathvision_result_json
 
 
 # Refer to https://github.com/mathllm/MATH-V/blob/main/evaluation/utils.py
@@ -140,14 +140,15 @@ def is_correct(record: dict) -> bool:
     return is_equal(gt_answer, model_answer) or is_equal(gt_answer_value, model_answer)
 
 
-def evaluate_model_answer() -> None:
+def evaluate_model_answer(split: str) -> None:
     records = []
+    parsed_jsonl = mathvision_parsed_jsonl(split)
 
-    for record in read_jsonl(MATHVISION_PARSED_JSONL):
+    for record in read_jsonl(parsed_jsonl):
         record["is_correct"] = is_correct(record)
         records.append(record)
 
-    write_jsonl(MATHVISION_PARSED_JSONL, records)
+    write_jsonl(parsed_jsonl, records)
 
 
 def format_accuracy(correct: int, total: int) -> str:
@@ -164,10 +165,10 @@ def add_metric(results: dict[str, list[int]], key: str, correct: bool) -> None:
     results[key][1] += 1
 
 
-def compute_mathvision_accuracy() -> dict[str, str]:
+def compute_mathvision_accuracy(split: str) -> dict[str, str]:
     results: dict[str, list[int]] = {}
 
-    for record in read_jsonl(MATHVISION_PARSED_JSONL):
+    for record in read_jsonl(mathvision_parsed_jsonl(split)):
         correct = bool(record["is_correct"])
         level = record["level"]
         subject = record["subject"]
@@ -186,8 +187,8 @@ def compute_mathvision_accuracy() -> dict[str, str]:
     }
 
 
-def evaluate_mathvision() -> None:
-    evaluate_model_answer()
-    results = compute_mathvision_accuracy()
-    write_json(MATHVISION_RESULT_JSON, results)
-    print(f"mathvision:\t{results['all']}")
+def evaluate_mathvision(split: str) -> None:
+    evaluate_model_answer(split)
+    results = compute_mathvision_accuracy(split)
+    write_json(mathvision_result_json(split), results)
+    print(f"mathvision/{split}:\t{results['all']}")

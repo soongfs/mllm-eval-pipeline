@@ -1,7 +1,7 @@
 from mllm_eval_pipeline.io import read_jsonl, write_jsonl
 from mllm_eval_pipeline.paths import (
-    MATHVISION_PARSED_JSONL,
-    MATHVISION_PREDICTIONS_JSONL,
+    mathvision_parsed_jsonl,
+    mathvision_predictions_jsonl,
 )
 from mllm_eval_pipeline.utils import find_math_answer, is_number
 
@@ -69,12 +69,12 @@ def extract_answer(response: str) -> str:
     return model_answer
 
 
-def parse_predictions() -> None:
+def parse_predictions(split: str) -> None:
     total = 0
     parsed = 0
     records = []
 
-    for record in read_jsonl(MATHVISION_PREDICTIONS_JSONL):
+    for record in read_jsonl(mathvision_predictions_jsonl(split)):
         model_answer = extract_answer(record["response"])
         record["model_answer"] = model_answer
         records.append(record)
@@ -82,5 +82,5 @@ def parse_predictions() -> None:
         total += 1
         parsed += int(bool(model_answer))
 
-    write_jsonl(MATHVISION_PARSED_JSONL, records)
+    write_jsonl(mathvision_parsed_jsonl(split), records)
     print(f"parsed: {parsed}/{total}")

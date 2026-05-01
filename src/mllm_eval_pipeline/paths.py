@@ -10,13 +10,28 @@ RESULT_DIR = Path("outputs/result")
 
 # MathVision
 MATHVISION_DATASET_NAME = "MathLLMs/MathVision"
-MATHVISION_SPLIT = "testmini"
+MATHVISION_DEFAULT_SPLIT = "testmini"
+MATHVISION_SPLITS = ["testmini", "test"]
 
-MATHVISION_PROCESSED_JSONL = PROCESSED_DIR / "mathvision/mathvision_testmini.jsonl"
-MATHVISION_IMAGE_DIR = PROCESSED_DIR / "mathvision/images"
-MATHVISION_PREDICTIONS_JSONL = PREDICTIONS_DIR / "mathvision/predictions.jsonl"
-MATHVISION_PARSED_JSONL = PARSED_DIR / "mathvision/parsed.jsonl"
-MATHVISION_RESULT_JSON = RESULT_DIR / "result.json"
+
+def mathvision_processed_jsonl(split: str) -> Path:
+    return PROCESSED_DIR / "mathvision" / split / "samples.jsonl"
+
+
+def mathvision_image_dir(split: str) -> Path:
+    return PROCESSED_DIR / "mathvision" / split / "images"
+
+
+def mathvision_predictions_jsonl(split: str) -> Path:
+    return PREDICTIONS_DIR / "mathvision" / split / "predictions.jsonl"
+
+
+def mathvision_parsed_jsonl(split: str) -> Path:
+    return PARSED_DIR / "mathvision" / split / "parsed.jsonl"
+
+
+def mathvision_result_json(split: str) -> Path:
+    return RESULT_DIR / "mathvision" / split / "result.json"
 
 
 # Qwen2.5-VL
