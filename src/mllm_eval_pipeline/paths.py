@@ -44,9 +44,25 @@ VSTAR_SPLIT = "test"
 VSTAR_REPO_DIR = RAW_DATA_DIR / "vstar_repo"
 
 
+def vstar_processed_dir() -> Path:
+    return PROCESSED_DIR / "vstar" / VSTAR_SPLIT
+
+
 def vstar_processed_jsonl() -> Path:
-    return PROCESSED_DIR / "vstar" / VSTAR_SPLIT / "samples.jsonl"
+    return vstar_processed_dir() / "samples.jsonl"
 
 
 def vstar_image_dir() -> Path:
-    return PROCESSED_DIR / "vstar" / VSTAR_SPLIT / "images"
+    return vstar_processed_dir() / "images"
+
+
+def vstar_predictions_jsonl() -> Path:
+    return PREDICTIONS_DIR / "vstar" / VSTAR_SPLIT / "predictions.jsonl"
+
+
+def vstar_parsed_jsonl() -> Path:
+    return PARSED_DIR / "vstar" / VSTAR_SPLIT / "parsed.jsonl"
+
+
+def vstar_result_json() -> Path:
+    return RESULT_DIR / "vstar" / VSTAR_SPLIT / "result.json"

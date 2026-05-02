@@ -2,6 +2,8 @@ from mllm_eval_pipeline.io import read_jsonl, write_jsonl
 from mllm_eval_pipeline.paths import (
     mathvision_parsed_jsonl,
     mathvision_predictions_jsonl,
+    vstar_parsed_jsonl,
+    vstar_predictions_jsonl,
 )
 from mllm_eval_pipeline.utils import find_math_answer, is_number
 
@@ -21,9 +23,11 @@ def extract_answer(response: str) -> str:
             or model_answer.startswith(f"({c}) {c}\n")
         ):
             model_answer = c
+            matched_answer_phrase = True
 
     if is_number(model_answer.split("is ")[-1].rstrip(".")):
         model_answer = model_answer.split("is ")[-1].rstrip(".")
+        matched_answer_phrase = True
 
     if "oxed{" not in model_answer:
         for flag in [
@@ -83,4 +87,21 @@ def parse_predictions(split: str) -> None:
         parsed += int(bool(model_answer))
 
     write_jsonl(mathvision_parsed_jsonl(split), records)
+    print(f"parsed: {parsed}/{total}")
+
+
+def parse_vstar_predictions() -> None:
+    total = 0
+    parsed = 0
+    records = []
+
+    for record in read_jsonl(vstar_predictions_jsonl()):
+        model_answer = extract_answer(record["response"]).strip().upper()
+        record["model_answer"] = model_answer
+        records.append(record)
+
+        total += 1
+        parsed += int(bool(model_answer))
+
+    write_jsonl(vstar_parsed_jsonl(), records)
     print(f"parsed: {parsed}/{total}")

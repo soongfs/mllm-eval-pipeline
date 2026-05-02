@@ -17,6 +17,9 @@ from mllm_eval_pipeline.paths import (
     mathvision_image_dir,
     mathvision_predictions_jsonl,
     mathvision_processed_jsonl,
+    vstar_predictions_jsonl,
+    vstar_processed_dir,
+    vstar_processed_jsonl,
 )
 
 
@@ -99,3 +102,73 @@ def run_mathvision_inference(split: str, max_tokens: int) -> None:
     for record, output in zip(records, outputs, strict=True):
         record["response"] = output.outputs[0].text
     write_jsonl(mathvision_predictions_jsonl(split), records)
+
+
+def build_vstar_prompt(sample: dict) -> str:
+    question = sample["question"].replace(
+        "\nAnswer with the option's letter from the given choices directly.",
+        "",
+    )
+    return (
+        "Please solve the problem step by step and put your final answer in "
+        'one "\\boxed{}". '
+        'Only one letter from A, B, C, and D is allowed in the "\\boxed{}".\n'
+        f"{question}"
+    )
+
+
+def build_vstar_messages(sample: dict, image_path: Path) -> list[dict[str, Any]]:
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": str(image_path)},
+                {"type": "text", "text": build_vstar_prompt(sample)},
+            ],
+        }
+    ]
+
+
+def build_vstar_requests() -> tuple[list[TextPrompt], list[dict[str, Any]]]:
+    processed_jsonl = vstar_processed_jsonl()
+    processed_dir = vstar_processed_dir()
+
+    processor = AutoProcessor.from_pretrained(QWEN25_VL_3B_MODEL)
+    requests: list[TextPrompt] = []
+    records: list[dict[str, Any]] = []
+
+    for sample in read_jsonl(processed_jsonl):
+        image_path = processed_dir / sample["image"]
+        with Image.open(image_path) as image_file:
+            image = image_file.copy()
+        messages = build_vstar_messages(sample, image_path)
+        text = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        requests.append(
+            {
+                "prompt": text,
+                "multi_modal_data": {"image": image},
+            }
+        )
+        record = sample
+        record["prompt"] = text
+        records.append(record)
+    return requests, records
+
+
+def run_vstar_inference(max_tokens: int) -> None:
+    llm = LLM(model=QWEN25_VL_3B_MODEL)
+    sampling_params = SamplingParams(
+        temperature=0.0,
+        max_tokens=max_tokens,
+    )
+
+    requests, records = build_vstar_requests()
+    outputs = llm.generate(requests, sampling_params)
+
+    for record, output in zip(records, outputs, strict=True):
+        record["response"] = output.outputs[0].text
+    write_jsonl(vstar_predictions_jsonl(), records)

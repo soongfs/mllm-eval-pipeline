@@ -31,8 +31,9 @@ def main() -> None:
 
     infer_parser = subparsers.add_parser(
         "infer",
-        help="Run Qwen2.5-VL inference on MathVision",
+        help="Run inference on MathVision or V*",
     )
+    infer_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(infer_parser)
     infer_parser.add_argument(
         "--max-tokens",
@@ -45,12 +46,14 @@ def main() -> None:
         "parse",
         help="Parse answers from model responses",
     )
+    parse_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(parse_parser)
 
     evaluate_parser = subparsers.add_parser(
         "evaluate",
-        help="Evaluate parsed MathVision predictions",
+        help="Evaluate parsed predictions",
     )
+    evaluate_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(evaluate_parser)
 
     args = parser.parse_args()
@@ -69,17 +72,29 @@ def main() -> None:
         elif args.dataset == "vstar":
             preprocess_vstar()
     elif args.command == "infer":
-        from mllm_eval_pipeline.inference import run_mathvision_inference
+        from mllm_eval_pipeline.inference import (
+            run_mathvision_inference,
+            run_vstar_inference,
+        )
 
-        run_mathvision_inference(args.split, args.max_tokens)
+        if args.dataset == "mathvision":
+            run_mathvision_inference(args.split, args.max_tokens)
+        elif args.dataset == "vstar":
+            run_vstar_inference(args.max_tokens)
     elif args.command == "parse":
-        from mllm_eval_pipeline.parser import parse_predictions
+        from mllm_eval_pipeline.parser import parse_predictions, parse_vstar_predictions
 
-        parse_predictions(args.split)
+        if args.dataset == "mathvision":
+            parse_predictions(args.split)
+        elif args.dataset == "vstar":
+            parse_vstar_predictions()
     elif args.command == "evaluate":
-        from mllm_eval_pipeline.metrics import evaluate_mathvision
+        from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
 
-        evaluate_mathvision(args.split)
+        if args.dataset == "mathvision":
+            evaluate_mathvision(args.split)
+        elif args.dataset == "vstar":
+            evaluate_vstar()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,12 @@
 from latex2sympy2 import latex2sympy
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
-from mllm_eval_pipeline.paths import mathvision_parsed_jsonl, mathvision_result_json
+from mllm_eval_pipeline.paths import (
+    mathvision_parsed_jsonl,
+    mathvision_result_json,
+    vstar_parsed_jsonl,
+    vstar_result_json,
+)
 
 
 # Refer to https://github.com/mathllm/MATH-V/blob/main/evaluation/utils.py
@@ -192,3 +197,36 @@ def evaluate_mathvision(split: str) -> None:
     results = compute_mathvision_accuracy(split)
     write_json(mathvision_result_json(split), results)
     print(f"mathvision/{split}:\t{results['all']}")
+
+
+def evaluate_vstar() -> None:
+    records = []
+    parsed_jsonl = vstar_parsed_jsonl()
+
+    for record in read_jsonl(parsed_jsonl):
+        model_answer = record["model_answer"].strip().upper()
+        gt_answer = record["answer"].strip().upper()
+        record["is_correct"] = model_answer == gt_answer
+        records.append(record)
+
+    write_jsonl(parsed_jsonl, records)
+
+    results: dict[str, list[int]] = {}
+    for record in records:
+        correct = bool(record["is_correct"])
+        for key in ["all", record["category"]]:
+            if key not in results:
+                results[key] = [0, 0]
+            results[key][0] += int(correct)
+            results[key][1] += 1
+
+    formatted = {
+        key: format_accuracy(correct, total)
+        for key, (correct, total) in sorted(results.items())
+    }
+
+    write_json(vstar_result_json(), formatted)
+    print(f"vstar:\t{formatted['all']}")
+    for key, value in formatted.items():
+        if key != "all":
+            print(f"  {key}:\t{value}")
