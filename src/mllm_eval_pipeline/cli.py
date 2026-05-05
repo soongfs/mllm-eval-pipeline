@@ -14,6 +14,14 @@ def add_split_argument(command_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_suffix_argument(command_parser: argparse.ArgumentParser) -> None:
+    command_parser.add_argument(
+        "--suffix",
+        default=None,
+        help="Suffix for prediction, parsed, and result files",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="MLLM evaluation pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -41,6 +49,31 @@ def main() -> None:
         default=1024,
         help="Maximum number of generated tokens per sample",
     )
+    infer_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature",
+    )
+    infer_parser.add_argument(
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Nucleus sampling probability",
+    )
+    infer_parser.add_argument(
+        "--num-candidates",
+        type=int,
+        default=1,
+        help="Number of generated candidates per sample",
+    )
+    infer_parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for sampling",
+    )
+    add_suffix_argument(infer_parser)
 
     parse_parser = subparsers.add_parser(
         "parse",
@@ -48,6 +81,7 @@ def main() -> None:
     )
     parse_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(parse_parser)
+    add_suffix_argument(parse_parser)
 
     evaluate_parser = subparsers.add_parser(
         "evaluate",
@@ -55,6 +89,15 @@ def main() -> None:
     )
     evaluate_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(evaluate_parser)
+    add_suffix_argument(evaluate_parser)
+
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Select candidates with a lightweight rule verifier",
+    )
+    verify_parser.add_argument("dataset", choices=["mathvision"])
+    add_split_argument(verify_parser)
+    add_suffix_argument(verify_parser)
 
     args = parser.parse_args()
     if args.command == "download":
@@ -78,23 +121,46 @@ def main() -> None:
         )
 
         if args.dataset == "mathvision":
-            run_mathvision_inference(args.split, args.max_tokens)
+            run_mathvision_inference(
+                args.split,
+                args.max_tokens,
+                args.temperature,
+                args.top_p,
+                args.num_candidates,
+                args.seed,
+                args.suffix,
+            )
         elif args.dataset == "vstar":
-            run_vstar_inference(args.max_tokens)
+            run_vstar_inference(
+                args.max_tokens,
+                args.temperature,
+                args.top_p,
+                args.num_candidates,
+                args.seed,
+                args.suffix,
+            )
     elif args.command == "parse":
         from mllm_eval_pipeline.parser import parse_predictions, parse_vstar_predictions
 
         if args.dataset == "mathvision":
-            parse_predictions(args.split)
+            parse_predictions(args.split, args.suffix)
         elif args.dataset == "vstar":
-            parse_vstar_predictions()
+            parse_vstar_predictions(args.suffix)
     elif args.command == "evaluate":
         from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
 
         if args.dataset == "mathvision":
-            evaluate_mathvision(args.split)
+            evaluate_mathvision(args.split, args.suffix)
         elif args.dataset == "vstar":
-            evaluate_vstar()
+            evaluate_vstar(args.suffix)
+    elif args.command == "verify":
+        from mllm_eval_pipeline.verifier import verify_mathvision_predictions
+
+        if args.dataset == "mathvision":
+            verify_mathvision_predictions(
+                args.split,
+                args.suffix,
+            )
 
 
 if __name__ == "__main__":

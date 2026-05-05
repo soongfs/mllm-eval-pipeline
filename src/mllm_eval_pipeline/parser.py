@@ -73,12 +73,12 @@ def extract_answer(response: str) -> str:
     return model_answer
 
 
-def parse_predictions(split: str) -> None:
+def parse_predictions(split: str, output_suffix: str | None = None) -> None:
     total = 0
     parsed = 0
     records = []
 
-    for record in read_jsonl(mathvision_predictions_jsonl(split)):
+    for record in read_jsonl(mathvision_predictions_jsonl(split, output_suffix)):
         model_answer = extract_answer(record["response"])
         record["model_answer"] = model_answer
         records.append(record)
@@ -86,16 +86,16 @@ def parse_predictions(split: str) -> None:
         total += 1
         parsed += int(bool(model_answer))
 
-    write_jsonl(mathvision_parsed_jsonl(split), records)
+    write_jsonl(mathvision_parsed_jsonl(split, output_suffix), records)
     print(f"parsed: {parsed}/{total}")
 
 
-def parse_vstar_predictions() -> None:
+def parse_vstar_predictions(output_suffix: str | None = None) -> None:
     total = 0
     parsed = 0
     records = []
 
-    for record in read_jsonl(vstar_predictions_jsonl()):
+    for record in read_jsonl(vstar_predictions_jsonl(output_suffix)):
         model_answer = extract_answer(record["response"]).strip().upper()
         record["model_answer"] = model_answer
         records.append(record)
@@ -103,5 +103,5 @@ def parse_vstar_predictions() -> None:
         total += 1
         parsed += int(bool(model_answer))
 
-    write_jsonl(vstar_parsed_jsonl(), records)
+    write_jsonl(vstar_parsed_jsonl(output_suffix), records)
     print(f"parsed: {parsed}/{total}")

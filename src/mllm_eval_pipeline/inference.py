@@ -89,19 +89,33 @@ def build_mathvision_requests(
     return requests, records
 
 
-def run_mathvision_inference(split: str, max_tokens: int) -> None:
+def run_mathvision_inference(
+    split: str,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    num_candidates: int,
+    seed: int,
+    output_suffix: str | None,
+) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
-        temperature=0.0,
+        temperature=temperature,
+        top_p=top_p,
         max_tokens=max_tokens,
+        n=num_candidates,
+        seed=seed,
     )
 
     requests, records = build_mathvision_requests(split)
     outputs = llm.generate(requests, sampling_params)
 
     for record, output in zip(records, outputs, strict=True):
-        record["response"] = output.outputs[0].text
-    write_jsonl(mathvision_predictions_jsonl(split), records)
+        candidates = [{"response": candidate.text} for candidate in output.outputs]
+        record["response"] = candidates[0]["response"]
+        if num_candidates > 1:
+            record["candidates"] = candidates
+    write_jsonl(mathvision_predictions_jsonl(split, output_suffix), records)
 
 
 def build_vstar_prompt(sample: dict) -> str:
@@ -159,16 +173,29 @@ def build_vstar_requests() -> tuple[list[TextPrompt], list[dict[str, Any]]]:
     return requests, records
 
 
-def run_vstar_inference(max_tokens: int) -> None:
+def run_vstar_inference(
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    num_candidates: int,
+    seed: int,
+    output_suffix: str | None,
+) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
-        temperature=0.0,
+        temperature=temperature,
+        top_p=top_p,
         max_tokens=max_tokens,
+        n=num_candidates,
+        seed=seed,
     )
 
     requests, records = build_vstar_requests()
     outputs = llm.generate(requests, sampling_params)
 
     for record, output in zip(records, outputs, strict=True):
-        record["response"] = output.outputs[0].text
-    write_jsonl(vstar_predictions_jsonl(), records)
+        candidates = [{"response": candidate.text} for candidate in output.outputs]
+        record["response"] = candidates[0]["response"]
+        if num_candidates > 1:
+            record["candidates"] = candidates
+    write_jsonl(vstar_predictions_jsonl(output_suffix), records)

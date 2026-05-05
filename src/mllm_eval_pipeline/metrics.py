@@ -145,9 +145,9 @@ def is_correct(record: dict) -> bool:
     return is_equal(gt_answer, model_answer) or is_equal(gt_answer_value, model_answer)
 
 
-def evaluate_model_answer(split: str) -> None:
+def evaluate_model_answer(split: str, output_suffix: str | None = None) -> None:
     records = []
-    parsed_jsonl = mathvision_parsed_jsonl(split)
+    parsed_jsonl = mathvision_parsed_jsonl(split, output_suffix)
 
     for record in read_jsonl(parsed_jsonl):
         record["is_correct"] = is_correct(record)
@@ -170,10 +170,13 @@ def add_metric(results: dict[str, list[int]], key: str, correct: bool) -> None:
     results[key][1] += 1
 
 
-def compute_mathvision_accuracy(split: str) -> dict[str, str]:
+def compute_mathvision_accuracy(
+    split: str,
+    output_suffix: str | None = None,
+) -> dict[str, str]:
     results: dict[str, list[int]] = {}
 
-    for record in read_jsonl(mathvision_parsed_jsonl(split)):
+    for record in read_jsonl(mathvision_parsed_jsonl(split, output_suffix)):
         correct = bool(record["is_correct"])
         level = record["level"]
         subject = record["subject"]
@@ -192,16 +195,16 @@ def compute_mathvision_accuracy(split: str) -> dict[str, str]:
     }
 
 
-def evaluate_mathvision(split: str) -> None:
-    evaluate_model_answer(split)
-    results = compute_mathvision_accuracy(split)
-    write_json(mathvision_result_json(split), results)
+def evaluate_mathvision(split: str, output_suffix: str | None = None) -> None:
+    evaluate_model_answer(split, output_suffix)
+    results = compute_mathvision_accuracy(split, output_suffix)
+    write_json(mathvision_result_json(split, output_suffix), results)
     print(f"mathvision/{split}:\t{results['all']}")
 
 
-def evaluate_vstar() -> None:
+def evaluate_vstar(output_suffix: str | None = None) -> None:
     records = []
-    parsed_jsonl = vstar_parsed_jsonl()
+    parsed_jsonl = vstar_parsed_jsonl(output_suffix)
 
     for record in read_jsonl(parsed_jsonl):
         model_answer = record["model_answer"].strip().upper()
@@ -225,7 +228,7 @@ def evaluate_vstar() -> None:
         for key, (correct, total) in sorted(results.items())
     }
 
-    write_json(vstar_result_json(), formatted)
+    write_json(vstar_result_json(output_suffix), formatted)
     print(f"vstar:\t{formatted['all']}")
     for key, value in formatted.items():
         if key != "all":
