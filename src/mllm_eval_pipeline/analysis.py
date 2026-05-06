@@ -1,7 +1,18 @@
-from mllm_eval_pipeline.io import read_jsonl
+from pathlib import Path
+
+from mllm_eval_pipeline.io import read_jsonl, write_jsonl
 from mllm_eval_pipeline.metrics import format_accuracy, is_correct
 from mllm_eval_pipeline.parser import extract_answer
-from mllm_eval_pipeline.paths import mathvision_predictions_jsonl
+from mllm_eval_pipeline.paths import ANALYSIS_DIR, mathvision_predictions_jsonl
+
+CASE_TYPES = [
+    "changed",
+    "wrong-to-right",
+    "right-to-wrong",
+    "right-to-right",
+    "wrong-to-wrong",
+    "all",
+]
 
 
 def check_mathvision_response(record: dict, response: str) -> bool:
@@ -65,3 +76,115 @@ def analyze_mathvision_verifier(split: str, suffix: str) -> None:
     print(f"right -> right: {right_to_right}")
     print(f"wrong -> wrong: {wrong_to_wrong}")
     print(f"net gain: {verified_correct - first_correct:+d}")
+
+
+def get_case_type(first_is_correct: bool, verified_is_correct: bool) -> str:
+    if not first_is_correct and verified_is_correct:
+        return "wrong-to-right"
+    if first_is_correct and not verified_is_correct:
+        return "right-to-wrong"
+    if first_is_correct and verified_is_correct:
+        return "right-to-right"
+    return "wrong-to-wrong"
+
+
+def default_case_export_path(split: str, suffix: str, case_type: str):
+    return (
+        ANALYSIS_DIR
+        / "mathvision"
+        / split
+        / f"verifier_cases_{suffix}_{case_type}.jsonl"
+    )
+
+
+def format_candidate_case(
+    idx: int,
+    candidate: dict,
+    record: dict,
+    selected_candidate_index: int,
+) -> dict:
+    response = candidate["response"]
+    answer = extract_answer(response)
+    correct = check_mathvision_response(record, response)
+    verification = candidate.get("verification", {})
+    return {
+        "candidate_index": idx,
+        "selected": idx == selected_candidate_index,
+        "score": verification.get("score"),
+        "parsed_answer": answer,
+        "correct": correct,
+        "verification": verification,
+        "response": response,
+    }
+
+
+def export_mathvision_verifier_cases(
+    split: str,
+    suffix: str,
+    case_type: str,
+    limit: int | None,
+    output_path: str | None = None,
+) -> None:
+    source_records = list(read_jsonl(mathvision_predictions_jsonl(split, suffix)))
+    verified_records = list(
+        read_jsonl(mathvision_predictions_jsonl(split, f"{suffix}_verified"))
+    )
+
+    if output_path is None:
+        output = default_case_export_path(split, suffix, case_type)
+    else:
+        output = Path(output_path)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    exported_cases = []
+    exported = 0
+    for source, verified in zip(source_records, verified_records, strict=True):
+        candidates = source.get("candidates")
+        if not candidates:
+            candidates = [{"response": source["response"]}]
+
+        first_is_correct = check_mathvision_response(
+            source,
+            candidates[0]["response"],
+        )
+        verified_is_correct = check_mathvision_response(
+            source,
+            verified["response"],
+        )
+        current_case_type = get_case_type(first_is_correct, verified_is_correct)
+        selected_candidate_index = verified.get("selected_candidate_index", 0)
+        changed = selected_candidate_index != 0
+
+        if case_type == "changed" and not changed:
+            continue
+        if case_type not in {"all", "changed", current_case_type}:
+            continue
+
+        exported_cases.append(
+            {
+                "id": source["id"],
+                "case_type": current_case_type,
+                "split": split,
+                "suffix": suffix,
+                "selected_candidate_index": selected_candidate_index,
+                "ground_truth": source["answer"],
+                "first_correct": first_is_correct,
+                "verified_correct": verified_is_correct,
+                "question": source["question"],
+                "candidates": [],
+            }
+        )
+        exported_case = exported_cases[-1]
+        for idx, candidate in enumerate(verified["candidates"]):
+            exported_case["candidates"].append(
+                format_candidate_case(idx, candidate, source, selected_candidate_index)
+            )
+
+        exported += 1
+        if limit is not None and exported >= limit:
+            break
+
+    write_jsonl(output, exported_cases)
+
+    print(f"exported: {exported}, output: {output}")

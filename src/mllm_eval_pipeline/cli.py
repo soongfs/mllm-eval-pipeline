@@ -1,5 +1,6 @@
 import argparse
 
+from mllm_eval_pipeline.analysis import CASE_TYPES
 from mllm_eval_pipeline.paths import MATHVISION_DEFAULT_SPLIT, MATHVISION_SPLITS
 
 DATASETS = ["mathvision", "vstar"]
@@ -115,6 +116,31 @@ def main() -> None:
     add_split_argument(analyze_verifier_parser)
     add_required_suffix_argument(analyze_verifier_parser)
 
+    export_verifier_cases_parser = subparsers.add_parser(
+        "export-verifier-cases",
+        help="Export verifier reranking cases as JSONL",
+    )
+    export_verifier_cases_parser.add_argument("dataset", choices=["mathvision"])
+    add_split_argument(export_verifier_cases_parser)
+    add_required_suffix_argument(export_verifier_cases_parser)
+    export_verifier_cases_parser.add_argument(
+        "--case-type",
+        choices=CASE_TYPES,
+        default="changed",
+        help="Verifier case type to export",
+    )
+    export_verifier_cases_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of cases to export",
+    )
+    export_verifier_cases_parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output JSONL path",
+    )
+
     args = parser.parse_args()
     if args.command == "download":
         from mllm_eval_pipeline.dataset import download_mathvision, download_vstar
@@ -182,6 +208,17 @@ def main() -> None:
 
         if args.dataset == "mathvision":
             analyze_mathvision_verifier(args.split, args.suffix)
+    elif args.command == "export-verifier-cases":
+        from mllm_eval_pipeline.analysis import export_mathvision_verifier_cases
+
+        if args.dataset == "mathvision":
+            export_mathvision_verifier_cases(
+                args.split,
+                args.suffix,
+                args.case_type,
+                args.limit,
+                args.output,
+            )
 
 
 if __name__ == "__main__":

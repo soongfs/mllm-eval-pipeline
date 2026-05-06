@@ -6,6 +6,7 @@ PROCESSED_DIR = Path("data/processed")
 PREDICTIONS_DIR = Path("outputs/predictions")
 PARSED_DIR = Path("outputs/parsed")
 RESULT_DIR = Path("outputs/result")
+ANALYSIS_DIR = Path("outputs/analysis")
 
 
 # MathVision
