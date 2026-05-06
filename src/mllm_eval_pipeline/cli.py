@@ -22,6 +22,14 @@ def add_suffix_argument(command_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_required_suffix_argument(command_parser: argparse.ArgumentParser) -> None:
+    command_parser.add_argument(
+        "--suffix",
+        required=True,
+        help="Suffix for prediction, parsed, and result files",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="MLLM evaluation pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +107,14 @@ def main() -> None:
     add_split_argument(verify_parser)
     add_suffix_argument(verify_parser)
 
+    analyze_verifier_parser = subparsers.add_parser(
+        "analyze-verifier",
+        help="Analyze lightweight verifier reranking results",
+    )
+    analyze_verifier_parser.add_argument("dataset", choices=["mathvision"])
+    add_split_argument(analyze_verifier_parser)
+    add_required_suffix_argument(analyze_verifier_parser)
+
     args = parser.parse_args()
     if args.command == "download":
         from mllm_eval_pipeline.dataset import download_mathvision, download_vstar
@@ -161,6 +177,11 @@ def main() -> None:
                 args.split,
                 args.suffix,
             )
+    elif args.command == "analyze-verifier":
+        from mllm_eval_pipeline.analysis import analyze_mathvision_verifier
+
+        if args.dataset == "mathvision":
+            analyze_mathvision_verifier(args.split, args.suffix)
 
 
 if __name__ == "__main__":
