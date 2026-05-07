@@ -3,12 +3,7 @@ import re
 from latex2sympy2 import latex2sympy
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
-from mllm_eval_pipeline.paths import (
-    mathvision_parsed_jsonl,
-    mathvision_result_json,
-    vstar_parsed_jsonl,
-    vstar_result_json,
-)
+from mllm_eval_pipeline.paths import VSTAR_SPLIT, parsed_path, result_path
 
 UNIT_PATTERN = re.compile(
     r"(?:\\(?:text|mathrm)\{[^{}]*(?:cm|km|m)[^{}]*\}|"
@@ -216,9 +211,9 @@ def is_correct(record: dict) -> bool:
     return is_equal(gt_answer, model_answer) or is_equal(gt_answer_value, model_answer)
 
 
-def evaluate_model_answer(split: str, output_suffix: str | None = None) -> None:
+def evaluate_model_answer(split: str, experiment: str) -> None:
     records = []
-    parsed_jsonl = mathvision_parsed_jsonl(split, output_suffix)
+    parsed_jsonl = parsed_path("mathvision", split, experiment)
 
     for record in read_jsonl(parsed_jsonl):
         record["is_correct"] = is_correct(record)
@@ -241,13 +236,10 @@ def add_metric(results: dict[str, list[int]], key: str, correct: bool) -> None:
     results[key][1] += 1
 
 
-def compute_mathvision_accuracy(
-    split: str,
-    output_suffix: str | None = None,
-) -> dict[str, str]:
+def compute_mathvision_accuracy(split: str, experiment: str) -> dict[str, str]:
     results: dict[str, list[int]] = {}
 
-    for record in read_jsonl(mathvision_parsed_jsonl(split, output_suffix)):
+    for record in read_jsonl(parsed_path("mathvision", split, experiment)):
         correct = bool(record["is_correct"])
         level = record["level"]
         subject = record["subject"]
@@ -266,16 +258,16 @@ def compute_mathvision_accuracy(
     }
 
 
-def evaluate_mathvision(split: str, output_suffix: str | None = None) -> None:
-    evaluate_model_answer(split, output_suffix)
-    results = compute_mathvision_accuracy(split, output_suffix)
-    write_json(mathvision_result_json(split, output_suffix), results)
-    print(f"mathvision/{split}:\t{results['all']}")
+def evaluate_mathvision(split: str, experiment: str) -> None:
+    evaluate_model_answer(split, experiment)
+    results = compute_mathvision_accuracy(split, experiment)
+    write_json(result_path("mathvision", split, experiment), results)
+    print(f"mathvision/{split}/{experiment}:\t{results['all']}")
 
 
-def evaluate_vstar(output_suffix: str | None = None) -> None:
+def evaluate_vstar(experiment: str) -> None:
     records = []
-    parsed_jsonl = vstar_parsed_jsonl(output_suffix)
+    parsed_jsonl = parsed_path("vstar", VSTAR_SPLIT, experiment)
 
     for record in read_jsonl(parsed_jsonl):
         model_answer = record["model_answer"].strip().upper()
@@ -299,8 +291,8 @@ def evaluate_vstar(output_suffix: str | None = None) -> None:
         for key, (correct, total) in sorted(results.items())
     }
 
-    write_json(vstar_result_json(output_suffix), formatted)
-    print(f"vstar:\t{formatted['all']}")
+    write_json(result_path("vstar", VSTAR_SPLIT, experiment), formatted)
+    print(f"vstar/{experiment}:\t{formatted['all']}")
     for key, value in formatted.items():
         if key != "all":
             print(f"  {key}:\t{value}")

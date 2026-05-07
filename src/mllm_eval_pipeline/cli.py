@@ -15,19 +15,11 @@ def add_split_argument(command_parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_suffix_argument(command_parser: argparse.ArgumentParser) -> None:
+def add_experiment_argument(command_parser: argparse.ArgumentParser) -> None:
     command_parser.add_argument(
-        "--suffix",
-        default=None,
-        help="Suffix for prediction, parsed, and result files",
-    )
-
-
-def add_required_suffix_argument(command_parser: argparse.ArgumentParser) -> None:
-    command_parser.add_argument(
-        "--suffix",
+        "--experiment",
         required=True,
-        help="Suffix for prediction, parsed, and result files",
+        help="Experiment name (output directory under outputs/<dataset>/<split>/)",
     )
 
 
@@ -82,7 +74,7 @@ def main() -> None:
         default=42,
         help="Random seed for sampling",
     )
-    add_suffix_argument(infer_parser)
+    add_experiment_argument(infer_parser)
 
     parse_parser = subparsers.add_parser(
         "parse",
@@ -90,7 +82,7 @@ def main() -> None:
     )
     parse_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(parse_parser)
-    add_suffix_argument(parse_parser)
+    add_experiment_argument(parse_parser)
 
     evaluate_parser = subparsers.add_parser(
         "evaluate",
@@ -98,7 +90,7 @@ def main() -> None:
     )
     evaluate_parser.add_argument("dataset", choices=DATASETS)
     add_split_argument(evaluate_parser)
-    add_suffix_argument(evaluate_parser)
+    add_experiment_argument(evaluate_parser)
 
     verify_parser = subparsers.add_parser(
         "verify",
@@ -106,7 +98,16 @@ def main() -> None:
     )
     verify_parser.add_argument("dataset", choices=["mathvision"])
     add_split_argument(verify_parser)
-    add_suffix_argument(verify_parser)
+    verify_parser.add_argument(
+        "--base",
+        required=True,
+        help="Base experiment to verify",
+    )
+    verify_parser.add_argument(
+        "--experiment",
+        default=None,
+        help="Output experiment name (default: <base>.rule)",
+    )
 
     analyze_verifier_parser = subparsers.add_parser(
         "analyze-verifier",
@@ -114,7 +115,7 @@ def main() -> None:
     )
     analyze_verifier_parser.add_argument("dataset", choices=["mathvision"])
     add_split_argument(analyze_verifier_parser)
-    add_required_suffix_argument(analyze_verifier_parser)
+    add_experiment_argument(analyze_verifier_parser)
 
     export_verifier_cases_parser = subparsers.add_parser(
         "export-verifier-cases",
@@ -122,7 +123,7 @@ def main() -> None:
     )
     export_verifier_cases_parser.add_argument("dataset", choices=["mathvision"])
     add_split_argument(export_verifier_cases_parser)
-    add_required_suffix_argument(export_verifier_cases_parser)
+    add_experiment_argument(export_verifier_cases_parser)
     export_verifier_cases_parser.add_argument(
         "--case-type",
         choices=CASE_TYPES,
@@ -134,11 +135,6 @@ def main() -> None:
         type=int,
         default=None,
         help="Maximum number of cases to export",
-    )
-    export_verifier_cases_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional output JSONL path",
     )
 
     args = parser.parse_args()
@@ -170,7 +166,7 @@ def main() -> None:
                 args.top_p,
                 args.num_candidates,
                 args.seed,
-                args.suffix,
+                args.experiment,
             )
         elif args.dataset == "vstar":
             run_vstar_inference(
@@ -179,42 +175,42 @@ def main() -> None:
                 args.top_p,
                 args.num_candidates,
                 args.seed,
-                args.suffix,
+                args.experiment,
             )
     elif args.command == "parse":
         from mllm_eval_pipeline.parser import parse_predictions
 
-        parse_predictions(args.dataset, args.split, args.suffix)
+        parse_predictions(args.dataset, args.split, args.experiment)
     elif args.command == "evaluate":
         from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
 
         if args.dataset == "mathvision":
-            evaluate_mathvision(args.split, args.suffix)
+            evaluate_mathvision(args.split, args.experiment)
         elif args.dataset == "vstar":
-            evaluate_vstar(args.suffix)
+            evaluate_vstar(args.experiment)
     elif args.command == "verify":
-        from mllm_eval_pipeline.verifier import verify_mathvision_predictions
+        from mllm_eval_pipeline.verifier import (
+            VERIFIER_RULE,
+            verify_mathvision_predictions,
+        )
 
+        experiment = args.experiment or f"{args.base}.{VERIFIER_RULE}"
         if args.dataset == "mathvision":
-            verify_mathvision_predictions(
-                args.split,
-                args.suffix,
-            )
+            verify_mathvision_predictions(args.split, args.base, experiment)
     elif args.command == "analyze-verifier":
         from mllm_eval_pipeline.analysis import analyze_mathvision_verifier
 
         if args.dataset == "mathvision":
-            analyze_mathvision_verifier(args.split, args.suffix)
+            analyze_mathvision_verifier(args.split, args.experiment)
     elif args.command == "export-verifier-cases":
         from mllm_eval_pipeline.analysis import export_mathvision_verifier_cases
 
         if args.dataset == "mathvision":
             export_mathvision_verifier_cases(
                 args.split,
-                args.suffix,
+                args.experiment,
                 args.case_type,
                 args.limit,
-                args.output,
             )
 
 

@@ -94,14 +94,30 @@ Verifier transition analysis:
 | Right -> Wrong | 94 |
 | Net gain | +40 |
 
+### Output layout
+
+Each experiment lives in its own directory:
+
+```
+outputs/<dataset>/<split>/<experiment>/
+  predictions.jsonl
+  parsed.jsonl
+  result.json
+  meta.json
+  verifier_cases_<case_type>.jsonl   # only for verifier-derived experiments
+```
+
+Verifier-derived experiments are named `<base>.<verifier>` (e.g.
+`k3_1024.rule`) and `meta.json` records the base experiment.
+
 ### Commands
 
 Greedy baseline:
 
 ```bash
-uv run mllm-eval infer mathvision --split testmini --max-tokens 1024 --suffix 1024
-uv run mllm-eval parse mathvision --split testmini --suffix 1024
-uv run mllm-eval evaluate mathvision --split testmini --suffix 1024
+uv run mllm-eval infer mathvision --split testmini --max-tokens 1024 --experiment greedy_1024
+uv run mllm-eval parse mathvision --split testmini --experiment greedy_1024
+uv run mllm-eval evaluate mathvision --split testmini --experiment greedy_1024
 ```
 
 Multi-candidate sampling:
@@ -113,23 +129,23 @@ uv run mllm-eval infer mathvision --split testmini \
   --top-p 0.9 \
   --num-candidates 3 \
   --seed 42 \
-  --suffix k3_1024
+  --experiment k3_1024
 
-uv run mllm-eval parse mathvision --split testmini --suffix k3_1024
-uv run mllm-eval evaluate mathvision --split testmini --suffix k3_1024
+uv run mllm-eval parse mathvision --split testmini --experiment k3_1024
+uv run mllm-eval evaluate mathvision --split testmini --experiment k3_1024
 ```
 
-Rule verifier:
+Rule verifier (writes to `outputs/mathvision/testmini/k3_1024.rule/`):
 
 ```bash
-uv run mllm-eval verify mathvision --split testmini --suffix k3_1024
-uv run mllm-eval parse mathvision --split testmini --suffix k3_1024_verified
-uv run mllm-eval evaluate mathvision --split testmini --suffix k3_1024_verified
-uv run mllm-eval analyze-verifier mathvision --split testmini --suffix k3_1024
+uv run mllm-eval verify mathvision --split testmini --base k3_1024
+uv run mllm-eval parse mathvision --split testmini --experiment k3_1024.rule
+uv run mllm-eval evaluate mathvision --split testmini --experiment k3_1024.rule
+uv run mllm-eval analyze-verifier mathvision --split testmini --experiment k3_1024.rule
 ```
 
 For `max_tokens=2048`, replace `--max-tokens 1024` with `--max-tokens 2048`
-and use a different suffix such as `k3_2048`.
+and use a different experiment name such as `k3_2048`.
 
 ### Notes
 

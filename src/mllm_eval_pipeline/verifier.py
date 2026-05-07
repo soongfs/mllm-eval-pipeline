@@ -1,8 +1,9 @@
 from typing import Any
 
-from mllm_eval_pipeline.io import read_jsonl, write_jsonl
+from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
+from mllm_eval_pipeline.metadata import now_iso, read_git_sha
 from mllm_eval_pipeline.parser import extract_answer
-from mllm_eval_pipeline.paths import mathvision_predictions_jsonl
+from mllm_eval_pipeline.paths import meta_path, predictions_path
 
 MATH_REASONING_WORDS = [
     "therefore",
@@ -15,6 +16,8 @@ MATH_REASONING_WORDS = [
     "simplify",
     "solve",
 ]
+
+VERIFIER_RULE = "rule"
 
 
 def score_mathvision_candidate(record: dict[str, Any], response: str) -> dict[str, Any]:
@@ -65,15 +68,14 @@ def score_mathvision_candidate(record: dict[str, Any], response: str) -> dict[st
 
 def verify_mathvision_predictions(
     split: str,
-    suffix: str | None = None,
+    base: str,
+    experiment: str,
 ) -> None:
-    output_suffix = f"{suffix}_verified" if suffix else "verified"
-
     records = []
     selected = 0
     total = 0
 
-    for record in read_jsonl(mathvision_predictions_jsonl(split, suffix)):
+    for record in read_jsonl(predictions_path("mathvision", split, base)):
         candidates = record.get("candidates")
         if not candidates:
             candidates = [{"response": record["response"]}]
@@ -103,5 +105,21 @@ def verify_mathvision_predictions(
         selected += int(best_candidate["candidate_index"] != 0)
         total += 1
 
-    write_jsonl(mathvision_predictions_jsonl(split, output_suffix), records)
+    write_jsonl(predictions_path("mathvision", split, experiment), records)
+    write_json(
+        meta_path("mathvision", split, experiment),
+        {
+            "dataset": "mathvision",
+            "split": split,
+            "experiment": experiment,
+            "stage": "verify",
+            "verifier": VERIFIER_RULE,
+            "base_experiment": base,
+            "num_samples": total,
+            "num_changed": selected,
+            "git_sha": read_git_sha(),
+            "timestamp": now_iso(),
+        },
+        indent=2,
+    )
     print(f"verified: {total}/{total}, changed: {selected}/{total}")

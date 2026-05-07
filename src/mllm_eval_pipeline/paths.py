@@ -3,10 +3,7 @@ from pathlib import Path
 # Data and outputs
 RAW_DATA_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
-PREDICTIONS_DIR = Path("outputs/predictions")
-PARSED_DIR = Path("outputs/parsed")
-RESULT_DIR = Path("outputs/result")
-ANALYSIS_DIR = Path("outputs/analysis")
+OUTPUTS_DIR = Path("outputs")
 
 
 # MathVision
@@ -15,33 +12,12 @@ MATHVISION_DEFAULT_SPLIT = "testmini"
 MATHVISION_SPLITS = ["testmini", "test"]
 
 
-def add_output_suffix(path: Path, suffix: str | None) -> Path:
-    if not suffix:
-        return path
-    return path.with_name(f"{path.stem}_{suffix}{path.suffix}")
-
-
 def mathvision_processed_jsonl(split: str) -> Path:
     return PROCESSED_DIR / "mathvision" / split / "samples.jsonl"
 
 
 def mathvision_image_dir(split: str) -> Path:
     return PROCESSED_DIR / "mathvision" / split / "images"
-
-
-def mathvision_predictions_jsonl(split: str, suffix: str | None = None) -> Path:
-    path = PREDICTIONS_DIR / "mathvision" / split / "predictions.jsonl"
-    return add_output_suffix(path, suffix)
-
-
-def mathvision_parsed_jsonl(split: str, suffix: str | None = None) -> Path:
-    path = PARSED_DIR / "mathvision" / split / "parsed.jsonl"
-    return add_output_suffix(path, suffix)
-
-
-def mathvision_result_json(split: str, suffix: str | None = None) -> Path:
-    path = RESULT_DIR / "mathvision" / split / "result.json"
-    return add_output_suffix(path, suffix)
 
 
 # Qwen2.5-VL
@@ -66,16 +42,31 @@ def vstar_image_dir() -> Path:
     return vstar_processed_dir() / "images"
 
 
-def vstar_predictions_jsonl(suffix: str | None = None) -> Path:
-    path = PREDICTIONS_DIR / "vstar" / VSTAR_SPLIT / "predictions.jsonl"
-    return add_output_suffix(path, suffix)
+# Experiment outputs (one directory per experiment, holding all artifacts)
+def experiment_dir(dataset: str, split: str, experiment: str) -> Path:
+    return OUTPUTS_DIR / dataset / split / experiment
 
 
-def vstar_parsed_jsonl(suffix: str | None = None) -> Path:
-    path = PARSED_DIR / "vstar" / VSTAR_SPLIT / "parsed.jsonl"
-    return add_output_suffix(path, suffix)
+def predictions_path(dataset: str, split: str, experiment: str) -> Path:
+    return experiment_dir(dataset, split, experiment) / "predictions.jsonl"
 
 
-def vstar_result_json(suffix: str | None = None) -> Path:
-    path = RESULT_DIR / "vstar" / VSTAR_SPLIT / "result.json"
-    return add_output_suffix(path, suffix)
+def parsed_path(dataset: str, split: str, experiment: str) -> Path:
+    return experiment_dir(dataset, split, experiment) / "parsed.jsonl"
+
+
+def result_path(dataset: str, split: str, experiment: str) -> Path:
+    return experiment_dir(dataset, split, experiment) / "result.json"
+
+
+def meta_path(dataset: str, split: str, experiment: str) -> Path:
+    return experiment_dir(dataset, split, experiment) / "meta.json"
+
+
+def verifier_cases_path(
+    dataset: str, split: str, experiment: str, case_type: str
+) -> Path:
+    return (
+        experiment_dir(dataset, split, experiment)
+        / f"verifier_cases_{case_type}.jsonl"
+    )

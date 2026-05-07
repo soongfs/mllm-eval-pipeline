@@ -1,13 +1,7 @@
 import re
-from pathlib import Path
 
 from mllm_eval_pipeline.io import read_jsonl, write_jsonl
-from mllm_eval_pipeline.paths import (
-    mathvision_parsed_jsonl,
-    mathvision_predictions_jsonl,
-    vstar_parsed_jsonl,
-    vstar_predictions_jsonl,
-)
+from mllm_eval_pipeline.paths import VSTAR_SPLIT, parsed_path, predictions_path
 
 ANSWER_PHRASES = [
     "the final answer is",
@@ -351,62 +345,23 @@ def extract_answer(response: str) -> str:
     return normalize_answer(raw_answer)
 
 
-def prediction_path(dataset: str, split: str, output_suffix: str | None) -> Path:
-    """Build the prediction file path for a dataset.
-
-    Args:
-        dataset: Dataset name.
-        split: MathVision split name. Ignored for V* because it only has one
-            processed split.
-        output_suffix: Optional experiment suffix for the prediction file.
-
-    Returns:
-        Path to the prediction JSONL file.
-    """
-    if dataset == "mathvision":
-        return mathvision_predictions_jsonl(split, output_suffix)
-    if dataset == "vstar":
-        return vstar_predictions_jsonl(output_suffix)
-    raise ValueError(f"Unsupported dataset: {dataset}")
-
-
-def parsed_path(dataset: str, split: str, output_suffix: str | None) -> Path:
-    """Build the parsed-output file path for a dataset.
-
-    Args:
-        dataset: Dataset name.
-        split: MathVision split name. Ignored for V* because it only has one
-            processed split.
-        output_suffix: Optional experiment suffix for the parsed file.
-
-    Returns:
-        Path to the parsed JSONL file.
-    """
-    if dataset == "mathvision":
-        return mathvision_parsed_jsonl(split, output_suffix)
-    if dataset == "vstar":
-        return vstar_parsed_jsonl(output_suffix)
-    raise ValueError(f"Unsupported dataset: {dataset}")
-
-
-def parse_predictions(
-    dataset: str,
-    split: str,
-    output_suffix: str | None = None,
-) -> None:
+def parse_predictions(dataset: str, split: str, experiment: str) -> None:
     """Parse prediction responses into model answers.
 
     Args:
         dataset: Dataset name.
-        split: MathVision split name. Ignored for V* because it only has one
-            processed split.
-        output_suffix: Optional experiment suffix for input/output files.
+        split: Dataset split name. V* callers should pass `VSTAR_SPLIT`.
+        experiment: Experiment name (output directory under
+            `outputs/<dataset>/<split>/`).
     """
+    if dataset == "vstar":
+        split = VSTAR_SPLIT
+
     total = 0
     parsed = 0
     records = []
 
-    for record in read_jsonl(prediction_path(dataset, split, output_suffix)):
+    for record in read_jsonl(predictions_path(dataset, split, experiment)):
         model_answer = extract_answer(record["response"])
         record["model_answer"] = model_answer
         records.append(record)
@@ -414,5 +369,5 @@ def parse_predictions(
         total += 1
         parsed += int(bool(model_answer))
 
-    write_jsonl(parsed_path(dataset, split, output_suffix), records)
+    write_jsonl(parsed_path(dataset, split, experiment), records)
     print(f"parsed: {parsed}/{total}")

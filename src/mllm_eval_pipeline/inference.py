@@ -11,16 +11,47 @@ from transformers import AutoProcessor
 from vllm import LLM, SamplingParams
 from vllm.inputs import TextPrompt
 
-from mllm_eval_pipeline.io import read_jsonl, write_jsonl
+from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
+from mllm_eval_pipeline.metadata import now_iso, package_version, read_git_sha
 from mllm_eval_pipeline.paths import (
     QWEN25_VL_3B_MODEL,
+    VSTAR_SPLIT,
     mathvision_image_dir,
-    mathvision_predictions_jsonl,
     mathvision_processed_jsonl,
-    vstar_predictions_jsonl,
+    meta_path,
+    predictions_path,
     vstar_processed_dir,
     vstar_processed_jsonl,
 )
+
+
+def build_inference_metadata(
+    dataset: str,
+    split: str,
+    experiment: str,
+    model: str,
+    sampling_params: SamplingParams,
+    num_samples: int,
+) -> dict[str, Any]:
+    return {
+        "dataset": dataset,
+        "split": split,
+        "experiment": experiment,
+        "stage": "inference",
+        "model": model,
+        "num_samples": num_samples,
+        "sampling": {
+            "max_tokens": sampling_params.max_tokens,
+            "temperature": sampling_params.temperature,
+            "top_p": sampling_params.top_p,
+            "n": sampling_params.n,
+            "seed": sampling_params.seed,
+        },
+        "vllm_version": package_version("vllm"),
+        "transformers_version": package_version("transformers"),
+        "git_sha": read_git_sha(),
+        "timestamp": now_iso(),
+    }
 
 
 # Refer to https://github.com/mathllm/MATH-V/blob/main/models/Qwen-VL.py
@@ -31,11 +62,11 @@ def build_mathvision_prompt(sample: dict) -> str:
         assert len(sample["options"]) == 5, sample
         if "".join(sample["options"]) != "ABCDE":
             options = (
-                f"(A) {sample['options'][0]}\n",
-                f"(B) {sample['options'][1]}\n",
-                f"(C) {sample['options'][2]}\n",
-                f"(D) {sample['options'][3]}\n",
-                f"(E) {sample['options'][4]}\n",
+                f"(A) {sample['options'][0]}\n"
+                f"(B) {sample['options'][1]}\n"
+                f"(C) {sample['options'][2]}\n"
+                f"(D) {sample['options'][3]}\n"
+                f"(E) {sample['options'][4]}\n"
             )
     return (
         'Please solve the problem step by step and put your answer in one "\\boxed{}". '
@@ -96,7 +127,7 @@ def run_mathvision_inference(
     top_p: float,
     num_candidates: int,
     seed: int,
-    output_suffix: str | None,
+    experiment: str,
 ) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
@@ -115,7 +146,19 @@ def run_mathvision_inference(
         record["response"] = candidates[0]["response"]
         if num_candidates > 1:
             record["candidates"] = candidates
-    write_jsonl(mathvision_predictions_jsonl(split, output_suffix), records)
+    write_jsonl(predictions_path("mathvision", split, experiment), records)
+    write_json(
+        meta_path("mathvision", split, experiment),
+        build_inference_metadata(
+            "mathvision",
+            split,
+            experiment,
+            QWEN25_VL_3B_MODEL,
+            sampling_params,
+            len(records),
+        ),
+        indent=2,
+    )
 
 
 def build_vstar_prompt(sample: dict) -> str:
@@ -179,7 +222,7 @@ def run_vstar_inference(
     top_p: float,
     num_candidates: int,
     seed: int,
-    output_suffix: str | None,
+    experiment: str,
 ) -> None:
     llm = LLM(model=QWEN25_VL_3B_MODEL)
     sampling_params = SamplingParams(
@@ -198,4 +241,16 @@ def run_vstar_inference(
         record["response"] = candidates[0]["response"]
         if num_candidates > 1:
             record["candidates"] = candidates
-    write_jsonl(vstar_predictions_jsonl(output_suffix), records)
+    write_jsonl(predictions_path("vstar", VSTAR_SPLIT, experiment), records)
+    write_json(
+        meta_path("vstar", VSTAR_SPLIT, experiment),
+        build_inference_metadata(
+            "vstar",
+            VSTAR_SPLIT,
+            experiment,
+            QWEN25_VL_3B_MODEL,
+            sampling_params,
+            len(records),
+        ),
+        indent=2,
+    )

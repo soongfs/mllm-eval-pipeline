@@ -1,9 +1,9 @@
-from pathlib import Path
+import json
 
 from mllm_eval_pipeline.io import read_jsonl, write_jsonl
 from mllm_eval_pipeline.metrics import format_accuracy, is_correct
 from mllm_eval_pipeline.parser import extract_answer
-from mllm_eval_pipeline.paths import ANALYSIS_DIR, mathvision_predictions_jsonl
+from mllm_eval_pipeline.paths import meta_path, predictions_path, verifier_cases_path
 
 CASE_TYPES = [
     "changed",
@@ -21,10 +21,23 @@ def check_mathvision_response(record: dict, response: str) -> bool:
     return is_correct(checked_record)
 
 
-def analyze_mathvision_verifier(split: str, suffix: str) -> None:
-    source_records = list(read_jsonl(mathvision_predictions_jsonl(split, suffix)))
+def read_base_experiment(split: str, experiment: str) -> str:
+    with meta_path("mathvision", split, experiment).open() as file:
+        meta = json.load(file)
+    base = meta.get("base_experiment")
+    if not base:
+        raise ValueError(
+            f"Experiment {experiment!r} has no base_experiment in meta.json; "
+            "is it a verifier-derived experiment?"
+        )
+    return base
+
+
+def analyze_mathvision_verifier(split: str, experiment: str) -> None:
+    base = read_base_experiment(split, experiment)
+    source_records = list(read_jsonl(predictions_path("mathvision", split, base)))
     verified_records = list(
-        read_jsonl(mathvision_predictions_jsonl(split, f"{suffix}_verified"))
+        read_jsonl(predictions_path("mathvision", split, experiment))
     )
 
     first_correct = 0
@@ -67,6 +80,7 @@ def analyze_mathvision_verifier(split: str, suffix: str) -> None:
         wrong_to_wrong += int(not first_is_correct and not verified_is_correct)
 
     total = len(source_records)
+    print(f"base:     {base}")
     print(f"first:    {format_accuracy(first_correct, total)}")
     print(f"verified: {format_accuracy(verified_correct, total)}")
     print(f"oracle:   {format_accuracy(oracle_correct, total)}")
@@ -86,15 +100,6 @@ def get_case_type(first_is_correct: bool, verified_is_correct: bool) -> str:
     if first_is_correct and verified_is_correct:
         return "right-to-right"
     return "wrong-to-wrong"
-
-
-def default_case_export_path(split: str, suffix: str, case_type: str):
-    return (
-        ANALYSIS_DIR
-        / "mathvision"
-        / split
-        / f"verifier_cases_{suffix}_{case_type}.jsonl"
-    )
 
 
 def format_candidate_case(
@@ -120,22 +125,17 @@ def format_candidate_case(
 
 def export_mathvision_verifier_cases(
     split: str,
-    suffix: str,
+    experiment: str,
     case_type: str,
     limit: int | None,
-    output_path: str | None = None,
 ) -> None:
-    source_records = list(read_jsonl(mathvision_predictions_jsonl(split, suffix)))
+    base = read_base_experiment(split, experiment)
+    source_records = list(read_jsonl(predictions_path("mathvision", split, base)))
     verified_records = list(
-        read_jsonl(mathvision_predictions_jsonl(split, f"{suffix}_verified"))
+        read_jsonl(predictions_path("mathvision", split, experiment))
     )
 
-    if output_path is None:
-        output = default_case_export_path(split, suffix, case_type)
-    else:
-        output = Path(output_path)
-
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output = verifier_cases_path("mathvision", split, experiment, case_type)
 
     exported_cases = []
     exported = 0
@@ -166,7 +166,8 @@ def export_mathvision_verifier_cases(
                 "id": source["id"],
                 "case_type": current_case_type,
                 "split": split,
-                "suffix": suffix,
+                "base_experiment": base,
+                "experiment": experiment,
                 "selected_candidate_index": selected_candidate_index,
                 "ground_truth": source["answer"],
                 "first_correct": first_is_correct,
