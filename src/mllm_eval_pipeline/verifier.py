@@ -1,28 +1,27 @@
-from typing import Any
+from typing import Any, Callable
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
 from mllm_eval_pipeline.metadata import now_iso, read_git_sha
+from mllm_eval_pipeline.metrics import normalize_for_comparison
 from mllm_eval_pipeline.parser import extract_answer
 from mllm_eval_pipeline.paths import meta_path, predictions_path
 
-MATH_REASONING_WORDS = [
-    "therefore",
-    "thus",
-    "so",
-    "because",
-    "calculate",
-    "equation",
-    "substitute",
-    "simplify",
-    "solve",
-]
-
 VERIFIER_RULE = "rule"
+VERIFIER_MAJORITY = "majority"
+VERIFIER_MAJORITY_RULE = "majority+rule"
+VERIFIERS = [VERIFIER_RULE, VERIFIER_MAJORITY, VERIFIER_MAJORITY_RULE]
 
 
-def score_mathvision_candidate(record: dict[str, Any], response: str) -> dict[str, Any]:
+def score_rule(record: dict[str, Any], response: str) -> dict[str, Any]:
+    """Score a candidate by self-features only.
+
+    Kept signals filter out obvious junk: missing answer, zero or multiple
+    boxed answers, invalid multi-choice letters. Removed signals (reasoning
+    keyword match, word-count range) were zero- or negative-value on 3B CoT
+    output and skewed with max_tokens.
+    """
     score = 0
-    details = {}
+    details: dict[str, Any] = {}
     answer = extract_answer(response).strip()
     boxed_count = response.count("oxed{")
 
@@ -46,19 +45,6 @@ def score_mathvision_candidate(record: dict[str, Any], response: str) -> dict[st
     else:
         details["valid_choice_answer"] = None
 
-    response_lower = response.lower()
-    details["reasoning_signal"] = any(
-        word in response_lower for word in MATH_REASONING_WORDS
-    )
-    if details["reasoning_signal"]:
-        score += 1
-
-    word_count = len(response.split())
-    details["word_count"] = word_count
-    details["length_sane"] = 20 <= word_count <= 260
-    if details["length_sane"]:
-        score += 1
-
     return {
         "score": score,
         "model_answer": answer,
@@ -66,43 +52,125 @@ def score_mathvision_candidate(record: dict[str, Any], response: str) -> dict[st
     }
 
 
+def scored_candidates(
+    record: dict[str, Any], candidates: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    result = []
+    for idx, candidate in enumerate(candidates):
+        response = candidate["response"]
+        verification = score_rule(record, response)
+        result.append(
+            {
+                **candidate,
+                "candidate_index": idx,
+                "verification": verification,
+            }
+        )
+    return result
+
+
+def select_rule(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pick the highest rule-scored candidate; ties break by first occurrence."""
+    return max(
+        candidates,
+        key=lambda candidate: (
+            candidate["verification"]["score"],
+            -candidate["candidate_index"],
+        ),
+    )
+
+
+def bucket_key(candidate: dict[str, Any]) -> str | None:
+    answer = candidate["verification"]["model_answer"]
+    if not answer:
+        return None
+    return normalize_for_comparison(answer)
+
+
+def select_majority(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Group candidates by normalized answer, pick any from the largest bucket.
+
+    Candidates without an extractable answer do not participate. If no
+    candidate has an answer, fall back to the first candidate.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for candidate in candidates:
+        key = bucket_key(candidate)
+        if key is None:
+            continue
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(candidate)
+
+    if not buckets:
+        return candidates[0]
+
+    # Largest bucket; earliest-seen key wins ties so we stay deterministic.
+    best_key = max(order, key=lambda key: (len(buckets[key]), -order.index(key)))
+    return buckets[best_key][0]
+
+
+def select_majority_rule(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Majority vote; tie-break the largest bucket by rule score."""
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for candidate in candidates:
+        key = bucket_key(candidate)
+        if key is None:
+            continue
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(candidate)
+
+    if not buckets:
+        return select_rule(candidates)
+
+    max_bucket_size = max(len(bucket) for bucket in buckets.values())
+    top_keys = [key for key in order if len(buckets[key]) == max_bucket_size]
+
+    # With a single majority bucket, pick best-scoring candidate inside it.
+    # On a tie between buckets, compare the best-scoring candidate of each.
+    bucket_champions = [select_rule(buckets[key]) for key in top_keys]
+    return select_rule(bucket_champions)
+
+
+SELECTORS: dict[str, Callable[[list[dict[str, Any]]], dict[str, Any]]] = {
+    VERIFIER_RULE: select_rule,
+    VERIFIER_MAJORITY: select_majority,
+    VERIFIER_MAJORITY_RULE: select_majority_rule,
+}
+
+
 def verify_mathvision_predictions(
     split: str,
     base: str,
     experiment: str,
+    verifier: str,
 ) -> None:
+    if verifier not in SELECTORS:
+        raise ValueError(f"Unknown verifier {verifier!r}; expected one of {VERIFIERS}")
+    select = SELECTORS[verifier]
+
     records = []
-    selected = 0
+    changed = 0
     total = 0
 
     for record in read_jsonl(predictions_path("mathvision", split, base)):
-        candidates = record.get("candidates")
-        if not candidates:
-            candidates = [{"response": record["response"]}]
+        candidates = record.get("candidates") or [{"response": record["response"]}]
+        candidates = scored_candidates(record, candidates)
 
-        scored_candidates = []
-        for idx, candidate in enumerate(candidates):
-            response = candidate["response"]
-            verification = score_mathvision_candidate(record, response)
-            scored_candidate = {
-                **candidate,
-                "verification": verification,
-                "candidate_index": idx,
-            }
-            scored_candidates.append(scored_candidate)
+        best = select(candidates)
 
-        best_candidate = max(
-            scored_candidates,
-            key=lambda candidate: candidate["verification"]["score"],
-        )
-
-        record["candidates"] = scored_candidates
-        record["selected_candidate_index"] = best_candidate["candidate_index"]
-        record["response"] = best_candidate["response"]
-        record["verification"] = best_candidate["verification"]
+        record["candidates"] = candidates
+        record["selected_candidate_index"] = best["candidate_index"]
+        record["response"] = best["response"]
+        record["verification"] = best["verification"]
         records.append(record)
 
-        selected += int(best_candidate["candidate_index"] != 0)
+        changed += int(best["candidate_index"] != 0)
         total += 1
 
     write_jsonl(predictions_path("mathvision", split, experiment), records)
@@ -113,13 +181,13 @@ def verify_mathvision_predictions(
             "split": split,
             "experiment": experiment,
             "stage": "verify",
-            "verifier": VERIFIER_RULE,
+            "verifier": verifier,
             "base_experiment": base,
             "num_samples": total,
-            "num_changed": selected,
+            "num_changed": changed,
             "git_sha": read_git_sha(),
             "timestamp": now_iso(),
         },
         indent=2,
     )
-    print(f"verified: {total}/{total}, changed: {selected}/{total}")
+    print(f"verified: {total}/{total}, changed: {changed}/{total}")

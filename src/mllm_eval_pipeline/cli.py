@@ -2,6 +2,7 @@ import argparse
 
 from mllm_eval_pipeline.analysis import CASE_TYPES
 from mllm_eval_pipeline.paths import MATHVISION_DEFAULT_SPLIT, MATHVISION_SPLITS
+from mllm_eval_pipeline.verifier import VERIFIER_RULE, VERIFIERS
 
 DATASETS = ["mathvision", "vstar"]
 
@@ -94,7 +95,7 @@ def main() -> None:
 
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Select candidates with a lightweight rule verifier",
+        help="Select candidates with a lightweight verifier",
     )
     verify_parser.add_argument("dataset", choices=["mathvision"])
     add_split_argument(verify_parser)
@@ -104,9 +105,15 @@ def main() -> None:
         help="Base experiment to verify",
     )
     verify_parser.add_argument(
+        "--verifier",
+        choices=VERIFIERS,
+        default=VERIFIER_RULE,
+        help="Verifier strategy",
+    )
+    verify_parser.add_argument(
         "--experiment",
         default=None,
-        help="Output experiment name (default: <base>.rule)",
+        help="Output experiment name (default: <base>.<verifier>)",
     )
 
     analyze_verifier_parser = subparsers.add_parser(
@@ -189,14 +196,13 @@ def main() -> None:
         elif args.dataset == "vstar":
             evaluate_vstar(args.experiment)
     elif args.command == "verify":
-        from mllm_eval_pipeline.verifier import (
-            VERIFIER_RULE,
-            verify_mathvision_predictions,
-        )
+        from mllm_eval_pipeline.verifier import verify_mathvision_predictions
 
-        experiment = args.experiment or f"{args.base}.{VERIFIER_RULE}"
+        experiment = args.experiment or f"{args.base}.{args.verifier}"
         if args.dataset == "mathvision":
-            verify_mathvision_predictions(args.split, args.base, experiment)
+            verify_mathvision_predictions(
+                args.split, args.base, experiment, args.verifier
+            )
     elif args.command == "analyze-verifier":
         from mllm_eval_pipeline.analysis import analyze_mathvision_verifier
 
