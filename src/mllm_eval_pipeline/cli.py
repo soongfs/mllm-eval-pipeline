@@ -182,12 +182,9 @@ def main() -> None:
                 args.suffix,
             )
     elif args.command == "parse":
-        from mllm_eval_pipeline.parser import parse_predictions, parse_vstar_predictions
+        from mllm_eval_pipeline.parser import parse_predictions
 
-        if args.dataset == "mathvision":
-            parse_predictions(args.split, args.suffix)
-        elif args.dataset == "vstar":
-            parse_vstar_predictions(args.suffix)
+        parse_predictions(args.dataset, args.split, args.suffix)
     elif args.command == "evaluate":
         from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
 
