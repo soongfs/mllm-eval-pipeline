@@ -1,3 +1,5 @@
+import re
+
 from latex2sympy2 import latex2sympy
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
@@ -8,121 +10,190 @@ from mllm_eval_pipeline.paths import (
     vstar_result_json,
 )
 
+UNIT_PATTERN = re.compile(
+    r"(?:\\(?:text|mathrm)\{[^{}]*(?:cm|km|m)[^{}]*\}|"
+    r"(?:cm|km|m)(?:\^\{?[23]\}?)?)$",
+)
+LATEX_TEXT_PATTERN = re.compile(r"\\(?:text|mathrm)\{([^{}]*)\}")
+BROKEN_TEXT_PATTERN = re.compile(r"\\text([a-z])\b")
+WHITESPACE_PATTERN = re.compile(r"\s+")
 
-# Refer to https://github.com/mathllm/MATH-V/blob/main/evaluation/utils.py
-def eval_tuple(s):
-    """
-    Evaluates the mathematical expressions within tuples
-    or lists represented as strings.
+
+def unwrap_latex_text(answer: str) -> str:
+    """Remove simple LaTeX text wrappers.
+
+    Examples:
+        `\\text{ cm}` becomes ` cm`.
+        `\\mathrm{~cm}^{2}` becomes `~cm^{2}`.
+        `\\textc` becomes `c`.
 
     Args:
-        s (str): The string representation of a tuple or list.
-                 E.g., "(a,b,c,...)" or "[a,b,c,...]"
+        answer: Answer string that may contain LaTeX text commands.
 
     Returns:
-        str: A string representation of the tuple or list with evaluated expressions.
-             Returns the original string if it doesn't match
-             the expected format or if an error occurs.
+        Answer with text command wrappers removed.
+    """
+    answer = LATEX_TEXT_PATTERN.sub(r"\1", answer)
+    return BROKEN_TEXT_PATTERN.sub(r"\1", answer)
+
+
+def remove_trailing_units(answer: str) -> str:
+    """Remove common trailing units from a comparison string.
+
+    Examples:
+        `12m` becomes `12`.
+        `125cm^{2}` becomes `125`.
+
+    Args:
+        answer: Normalized answer candidate.
+
+    Returns:
+        Answer with simple trailing length/area/volume units removed.
+    """
+    previous = None
+    while previous != answer:
+        previous = answer
+        answer = UNIT_PATTERN.sub("", answer).strip()
+    return answer
+
+
+def normalize_for_comparison(answer: str) -> str:
+    """Normalize answer text for symmetric metric comparison.
+
+    This is intentionally used only in metrics, not in parser output.
+    The parser keeps the extracted answer close to the model response; metric
+    comparison can be more permissive because both model answer and ground truth
+    go through the same normalization.
+
+    Args:
+        answer: Model answer or ground-truth answer text.
+
+    Returns:
+        A compact string suitable for exact or symbolic comparison.
+    """
+    answer = answer.lower().strip()
+
+    # Remove display wrappers: `$12$` -> `12`, `\textdollar12` -> `12`.
+    answer = answer.replace("\\textdollar", "")
+    answer = answer.replace("$", "")
+
+    # Unwrap text commands before deleting units: `12 \text{ cm}` -> `12 cm`.
+    answer = unwrap_latex_text(answer)
+
+    # Drop spacing-only LaTeX commands: `1\,000` -> `1000`.
+    answer = answer.replace("~", "")
+    answer = answer.replace("\\,", "")
+    answer = answer.replace("\\!", "")
+
+    # Drop visual sizing and degree markers: `\left(1\right)` -> `(1)`,
+    # `15^{\circ}` -> `15`.
+    answer = answer.replace("\\left", "")
+    answer = answer.replace("\\right", "")
+    answer = answer.replace("^{\\circ}", "")
+    answer = answer.replace("^\\circ", "")
+
+    answer = WHITESPACE_PATTERN.sub(" ", answer).strip()
+
+    # Delete trailing units symmetrically: `125cm^{2}` and `125` both compare
+    # as `125`.
+    answer = remove_trailing_units(answer)
+    return answer.replace(" ", "")
+
+
+def eval_tuple(answer: str) -> str:
+    """Evaluate tuple/list elements when possible.
+
+    This keeps the MathVision-style tuple behavior while making failures
+    non-fatal. Non-tuple answers are returned unchanged.
 
     Example:
-        eval_tuple("(2*3, 5+2)") -> "(6,7)"
-
-    Note:
-        This function relies on the latex2sympy function
-        which is assumed to be defined elsewhere in the code.
-    """
-    # Split the string by commas to get individual elements
-    sl = s[1:-1].split(",")
-
-    try:
-        # Check if string is a tuple representation and has more than one element
-        if s[0] == "(" and s[-1] == ")" and len(sl) > 1:
-            # Evaluate each element using latex2sympy
-            # and round the result to 2 decimal places
-            # Skip evaluation if element is 'infty', 'a', or '-a'
-            s = ",".join(
-                [
-                    str(round(eval(str(latex2sympy(sub))), 2))
-                    if "infty" not in sub and sub not in ["a", "-a"]
-                    else sub
-                    for sub in sl
-                ]
-            )
-            return f"({s})"
-
-        # Check if string is a list representation and has more than one element
-        elif s[0] == "[" and s[-1] == "]" and len(sl) > 1:
-            # Same evaluation process as for tuples
-            s = ",".join(
-                [
-                    str(round(eval(str(latex2sympy(sub))), 2))
-                    if "infty" not in sub and sub not in ["a", "-a"]
-                    else sub
-                    for sub in sl
-                ]
-            )
-            return f"[{s}]"
-
-    except Exception:  # Catch any exceptions and return the original string
-        return s
-
-    # Return original string if it doesn't match tuple or list format
-    return s
-
-
-def is_equal(asw: str, gt_asw: str) -> bool:
-    """
-    Judge if `asw` is equivalent to `gt_asw`.
-
-    This function checks if the given answers are equivalent, considering
-    various scenarios such as tuples, lists separated by commas, and
-    mathematical equivalence in LaTeX format.
+        `(2*3,5+2)` becomes `(6,7)`.
 
     Args:
-        asw (str): The answer string to be checked.
-        gt_asw (str): The ground truth answer string to be matched against.
+        answer: Candidate tuple/list string.
 
     Returns:
-        bool: True if the answers are equivalent, otherwise False.
-
+        Evaluated tuple/list string, or the original input when it cannot be
+        safely evaluated.
     """
-
-    # return gt_asw == asw
-
-    # Check for empty strings after removing spaces
-    # and return False if any of them is empty.
-    asw = asw.lower()
-    gt_asw = gt_asw.lower()
-
-    if asw.replace(" ", "") == "" or gt_asw.replace(" ", "") == "":
-        return False
-
-    if gt_asw.strip() == asw.strip():
-        return True
-
-    # Convert the string to a tuple format.
-    asw = eval_tuple(asw)
-    gt_asw = eval_tuple(gt_asw)
-
-    # Check for simple tuple containment.
-    # Return True if one tuple is contained in the other.
-    if gt_asw == asw:
-        return True
+    elements = answer[1:-1].split(",")
 
     try:
-        # Convert LaTeX format to a sympy expression and evaluate both expressions.
-        # If the evaluated results are close enough (up to 2 decimal places),
-        # return True.
-        if round(eval(str(latex2sympy(gt_asw))), 2) == round(
-            eval(str(latex2sympy(asw))), 2
-        ):
-            return True
+        if answer[0] == "(" and answer[-1] == ")" and len(elements) > 1:
+            evaluated = ",".join(evaluate_tuple_element(item) for item in elements)
+            return f"({evaluated})"
 
-        else:
-            return False
+        if answer[0] == "[" and answer[-1] == "]" and len(elements) > 1:
+            evaluated = ",".join(evaluate_tuple_element(item) for item in elements)
+            return f"[{evaluated}]"
     except Exception:
-        # If any error occurs during comparison, return False.
+        return answer
+
+    return answer
+
+
+def evaluate_tuple_element(element: str) -> str:
+    """Evaluate one tuple/list element unless it should stay symbolic."""
+    if "infty" in element or element in ["a", "-a"]:
+        return element
+    return str(round(eval(str(latex2sympy(element))), 2))
+
+
+def is_blank(answer: str) -> bool:
+    """Return whether an answer is empty after removing spaces."""
+    return answer.replace(" ", "") == ""
+
+
+def is_symbolically_equal(answer: str, gt_answer: str) -> bool:
+    """Compare two normalized math strings through latex2sympy.
+
+    Example:
+        `1/2` and `\\frac{1}{2}` compare as equal.
+    """
+    try:
+        return round(eval(str(latex2sympy(gt_answer))), 2) == round(
+            eval(str(latex2sympy(answer))), 2
+        )
+    except Exception:
         return False
+
+
+def is_equal(answer: str, gt_answer: str) -> bool:
+    """Judge whether a model answer is equivalent to the ground truth.
+
+    Args:
+        answer: Model answer string.
+        gt_answer: Ground-truth answer string or option value.
+
+    Returns:
+        True when the answers match exactly, after metric normalization, after
+        tuple normalization, or by symbolic comparison.
+    """
+    answer = answer.lower()
+    gt_answer = gt_answer.lower()
+
+    if is_blank(answer) or is_blank(gt_answer):
+        return False
+
+    if gt_answer.strip() == answer.strip():
+        return True
+
+    answer = normalize_for_comparison(answer)
+    gt_answer = normalize_for_comparison(gt_answer)
+
+    if is_blank(answer) or is_blank(gt_answer):
+        return False
+
+    if gt_answer == answer:
+        return True
+
+    answer = eval_tuple(answer)
+    gt_answer = eval_tuple(gt_answer)
+
+    if gt_answer == answer:
+        return True
+
+    return is_symbolically_equal(answer, gt_answer)
 
 
 def get_gt_answer_value(record: dict) -> str:
