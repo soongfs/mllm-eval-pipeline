@@ -144,6 +144,51 @@ def main() -> None:
         help="Maximum number of cases to export",
     )
 
+    run_all_parser = subparsers.add_parser(
+        "run-all",
+        help=(
+            "One-shot pipeline: download -> preprocess -> infer -> parse -> "
+            "evaluate [-> verify]"
+        ),
+    )
+    run_all_parser.add_argument("dataset", choices=DATASETS)
+    add_split_argument(run_all_parser)
+    run_all_parser.add_argument(
+        "--max-tokens", type=int, default=2048,
+        help="Max new tokens per sample",
+    )
+    run_all_parser.add_argument(
+        "--temperature", type=float, default=0.7,
+        help="Sampling temperature; 0.0 for greedy",
+    )
+    run_all_parser.add_argument(
+        "--top-p", type=float, default=0.9,
+        help="Nucleus sampling probability",
+    )
+    run_all_parser.add_argument(
+        "--num-candidates", type=int, default=8,
+        help="Candidates per sample (1 disables verifiers)",
+    )
+    run_all_parser.add_argument("--seed", type=int, default=42)
+    run_all_parser.add_argument(
+        "--experiment", default="k8_2048",
+        help="Experiment name / output subdirectory",
+    )
+    run_all_parser.add_argument(
+        "--verifiers",
+        nargs="*",
+        default=["rule", "majority", "majority+rule"],
+        choices=VERIFIERS,
+        help="Verifier strategies to run after evaluate (mathvision + k>1 only)",
+    )
+    run_all_parser.add_argument(
+        "--skip",
+        nargs="*",
+        default=[],
+        choices=["download", "preprocess", "infer", "parse", "evaluate", "verify"],
+        help="Stages to skip when artifacts already exist",
+    )
+
     args = parser.parse_args()
     if args.command == "download":
         from mllm_eval_pipeline.dataset import download_mathvision, download_vstar
@@ -218,6 +263,88 @@ def main() -> None:
                 args.case_type,
                 args.limit,
             )
+    elif args.command == "run-all":
+        from mllm_eval_pipeline.dataset import (
+            download_mathvision,
+            download_vstar,
+            preprocess_mathvision,
+            preprocess_vstar,
+        )
+        from mllm_eval_pipeline.inference import (
+            run_mathvision_inference,
+            run_vstar_inference,
+        )
+        from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
+        from mllm_eval_pipeline.parser import parse_predictions
+        from mllm_eval_pipeline.verifier import verify_mathvision_predictions
+
+        skip = set(args.skip)
+
+        def _heading(text: str) -> None:
+            bar = "=" * (len(text) + 6)
+            print(f"\n{bar}\n== {text} ==\n{bar}")
+
+        if "download" not in skip:
+            _heading(f"download {args.dataset} ({args.split})")
+            if args.dataset == "mathvision":
+                download_mathvision(args.split)
+            else:
+                download_vstar()
+
+        if "preprocess" not in skip:
+            _heading(f"preprocess {args.dataset} ({args.split})")
+            if args.dataset == "mathvision":
+                preprocess_mathvision(args.split)
+            else:
+                preprocess_vstar()
+
+        if "infer" not in skip:
+            _heading(f"infer -> {args.experiment}")
+            if args.dataset == "mathvision":
+                run_mathvision_inference(
+                    args.split,
+                    args.max_tokens,
+                    args.temperature,
+                    args.top_p,
+                    args.num_candidates,
+                    args.seed,
+                    args.experiment,
+                )
+            else:
+                run_vstar_inference(
+                    args.max_tokens,
+                    args.temperature,
+                    args.top_p,
+                    args.num_candidates,
+                    args.seed,
+                    args.experiment,
+                )
+
+        if "parse" not in skip:
+            _heading(f"parse {args.experiment}")
+            parse_predictions(args.dataset, args.split, args.experiment)
+
+        if "evaluate" not in skip:
+            _heading(f"evaluate {args.experiment}")
+            if args.dataset == "mathvision":
+                evaluate_mathvision(args.split, args.experiment)
+            else:
+                evaluate_vstar(args.experiment)
+
+        if (
+            "verify" not in skip
+            and args.dataset == "mathvision"
+            and args.num_candidates > 1
+            and args.verifiers
+        ):
+            for verifier in args.verifiers:
+                derived = f"{args.experiment}.{verifier}"
+                _heading(f"verify --verifier {verifier} -> {derived}")
+                verify_mathvision_predictions(
+                    args.split, args.experiment, derived, verifier
+                )
+                parse_predictions(args.dataset, args.split, derived)
+                evaluate_mathvision(args.split, derived)
 
 
 if __name__ == "__main__":
