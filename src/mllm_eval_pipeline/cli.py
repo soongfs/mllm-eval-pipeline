@@ -1,6 +1,5 @@
 import argparse
 
-from mllm_eval_pipeline.analysis import CASE_TYPES
 from mllm_eval_pipeline.paths import MATHVISION_DEFAULT_SPLIT, MATHVISION_SPLITS
 from mllm_eval_pipeline.verifier import VERIFIER_RULE, VERIFIERS
 
@@ -116,34 +115,6 @@ def main() -> None:
         help="Output experiment name (default: <base>.<verifier>)",
     )
 
-    analyze_verifier_parser = subparsers.add_parser(
-        "analyze-verifier",
-        help="Analyze lightweight verifier reranking results",
-    )
-    analyze_verifier_parser.add_argument("dataset", choices=["mathvision"])
-    add_split_argument(analyze_verifier_parser)
-    add_experiment_argument(analyze_verifier_parser)
-
-    export_verifier_cases_parser = subparsers.add_parser(
-        "export-verifier-cases",
-        help="Export verifier reranking cases as JSONL",
-    )
-    export_verifier_cases_parser.add_argument("dataset", choices=["mathvision"])
-    add_split_argument(export_verifier_cases_parser)
-    add_experiment_argument(export_verifier_cases_parser)
-    export_verifier_cases_parser.add_argument(
-        "--case-type",
-        choices=CASE_TYPES,
-        default="changed",
-        help="Verifier case type to export",
-    )
-    export_verifier_cases_parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum number of cases to export",
-    )
-
     run_all_parser = subparsers.add_parser(
         "run-all",
         help=(
@@ -177,7 +148,7 @@ def main() -> None:
     run_all_parser.add_argument(
         "--verifiers",
         nargs="*",
-        default=["rule", "majority", "majority+rule"],
+        default=["rule", "majority", "majority+rule", "oracle"],
         choices=VERIFIERS,
         help="Verifier strategies to run after evaluate (mathvision + k>1 only)",
     )
@@ -247,21 +218,6 @@ def main() -> None:
         if args.dataset == "mathvision":
             verify_mathvision_predictions(
                 args.split, args.base, experiment, args.verifier
-            )
-    elif args.command == "analyze-verifier":
-        from mllm_eval_pipeline.analysis import analyze_mathvision_verifier
-
-        if args.dataset == "mathvision":
-            analyze_mathvision_verifier(args.split, args.experiment)
-    elif args.command == "export-verifier-cases":
-        from mllm_eval_pipeline.analysis import export_mathvision_verifier_cases
-
-        if args.dataset == "mathvision":
-            export_mathvision_verifier_cases(
-                args.split,
-                args.experiment,
-                args.case_type,
-                args.limit,
             )
     elif args.command == "run-all":
         from mllm_eval_pipeline.dataset import (

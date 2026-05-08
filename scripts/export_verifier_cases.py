@@ -1,7 +1,25 @@
+"""Export verifier reranking cases as JSONL for human inspection.
+
+Reads a verifier-derived experiment + its base (from `meta.json`) and
+writes the selected cases to
+`outputs/mathvision/<split>/<experiment>/verifier_cases_<case_type>.jsonl`.
+
+Usage:
+    uv run python scripts/export_verifier_cases.py <split> <experiment>
+        [--case-type ...] [--limit N]
+
+Example:
+    uv run python scripts/export_verifier_cases.py testmini k8_2048.majority \
+        --case-type wrong-to-right --limit 20
+"""
+
+from __future__ import annotations
+
+import argparse
 import json
 
 from mllm_eval_pipeline.io import read_jsonl, write_jsonl
-from mllm_eval_pipeline.metrics import format_accuracy, is_correct
+from mllm_eval_pipeline.metrics import is_correct
 from mllm_eval_pipeline.parser import extract_answer
 from mllm_eval_pipeline.paths import meta_path, predictions_path, verifier_cases_path
 
@@ -33,65 +51,6 @@ def read_base_experiment(split: str, experiment: str) -> str:
     return base
 
 
-def analyze_mathvision_verifier(split: str, experiment: str) -> None:
-    base = read_base_experiment(split, experiment)
-    source_records = list(read_jsonl(predictions_path("mathvision", split, base)))
-    verified_records = list(
-        read_jsonl(predictions_path("mathvision", split, experiment))
-    )
-
-    first_correct = 0
-    verified_correct = 0
-    oracle_correct = 0
-    changed = 0
-    wrong_to_right = 0
-    right_to_wrong = 0
-    right_to_right = 0
-    wrong_to_wrong = 0
-
-    for source, verified in zip(source_records, verified_records, strict=True):
-        candidates = source.get("candidates")
-        if not candidates:
-            candidates = [{"response": source["response"]}]
-
-        first_is_correct = check_mathvision_response(
-            source,
-            candidates[0]["response"],
-        )
-        verified_is_correct = check_mathvision_response(
-            source,
-            verified["response"],
-        )
-        oracle_is_correct = any(
-            check_mathvision_response(source, candidate["response"])
-            for candidate in candidates
-        )
-
-        first_correct += int(first_is_correct)
-        verified_correct += int(verified_is_correct)
-        oracle_correct += int(oracle_is_correct)
-
-        selected_candidate_index = verified.get("selected_candidate_index", 0)
-        changed += int(selected_candidate_index != 0)
-
-        wrong_to_right += int(not first_is_correct and verified_is_correct)
-        right_to_wrong += int(first_is_correct and not verified_is_correct)
-        right_to_right += int(first_is_correct and verified_is_correct)
-        wrong_to_wrong += int(not first_is_correct and not verified_is_correct)
-
-    total = len(source_records)
-    print(f"base:     {base}")
-    print(f"first:    {format_accuracy(first_correct, total)}")
-    print(f"verified: {format_accuracy(verified_correct, total)}")
-    print(f"oracle:   {format_accuracy(oracle_correct, total)}")
-    print(f"changed:  {changed}/{total}")
-    print(f"wrong -> right: {wrong_to_right}")
-    print(f"right -> wrong: {right_to_wrong}")
-    print(f"right -> right: {right_to_right}")
-    print(f"wrong -> wrong: {wrong_to_wrong}")
-    print(f"net gain: {verified_correct - first_correct:+d}")
-
-
 def get_case_type(first_is_correct: bool, verified_is_correct: bool) -> str:
     if not first_is_correct and verified_is_correct:
         return "wrong-to-right"
@@ -103,10 +62,7 @@ def get_case_type(first_is_correct: bool, verified_is_correct: bool) -> str:
 
 
 def format_candidate_case(
-    idx: int,
-    candidate: dict,
-    record: dict,
-    selected_candidate_index: int,
+    idx: int, candidate: dict, record: dict, selected_candidate_index: int
 ) -> dict:
     response = candidate["response"]
     answer = extract_answer(response)
@@ -123,12 +79,7 @@ def format_candidate_case(
     }
 
 
-def export_mathvision_verifier_cases(
-    split: str,
-    experiment: str,
-    case_type: str,
-    limit: int | None,
-) -> None:
+def export(split: str, experiment: str, case_type: str, limit: int | None) -> None:
     base = read_base_experiment(split, experiment)
     source_records = list(read_jsonl(predictions_path("mathvision", split, base)))
     verified_records = list(
@@ -136,22 +87,14 @@ def export_mathvision_verifier_cases(
     )
 
     output = verifier_cases_path("mathvision", split, experiment, case_type)
-
     exported_cases = []
     exported = 0
-    for source, verified in zip(source_records, verified_records, strict=True):
-        candidates = source.get("candidates")
-        if not candidates:
-            candidates = [{"response": source["response"]}]
 
-        first_is_correct = check_mathvision_response(
-            source,
-            candidates[0]["response"],
-        )
-        verified_is_correct = check_mathvision_response(
-            source,
-            verified["response"],
-        )
+    for source, verified in zip(source_records, verified_records, strict=True):
+        candidates = source.get("candidates") or [{"response": source["response"]}]
+
+        first_is_correct = check_mathvision_response(source, candidates[0]["response"])
+        verified_is_correct = check_mathvision_response(source, verified["response"])
         current_case_type = get_case_type(first_is_correct, verified_is_correct)
         selected_candidate_index = verified.get("selected_candidate_index", 0)
         changed = selected_candidate_index != 0
@@ -176,9 +119,8 @@ def export_mathvision_verifier_cases(
                 "candidates": [],
             }
         )
-        exported_case = exported_cases[-1]
         for idx, candidate in enumerate(verified["candidates"]):
-            exported_case["candidates"].append(
+            exported_cases[-1]["candidates"].append(
                 format_candidate_case(idx, candidate, source, selected_candidate_index)
             )
 
@@ -187,5 +129,20 @@ def export_mathvision_verifier_cases(
             break
 
     write_jsonl(output, exported_cases)
-
     print(f"exported: {exported}, output: {output}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Export verifier reranking cases as JSONL for human inspection."
+    )
+    parser.add_argument("split", choices=["testmini", "test"])
+    parser.add_argument("experiment")
+    parser.add_argument("--case-type", choices=CASE_TYPES, default="changed")
+    parser.add_argument("--limit", type=int, default=None)
+    args = parser.parse_args()
+    export(args.split, args.experiment, args.case_type, args.limit)
+
+
+if __name__ == "__main__":
+    main()

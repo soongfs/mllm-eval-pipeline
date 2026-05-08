@@ -2,14 +2,15 @@ from typing import Any, Callable
 
 from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
 from mllm_eval_pipeline.metadata import now_iso, read_git_sha
-from mllm_eval_pipeline.metrics import normalize_for_comparison
+from mllm_eval_pipeline.metrics import is_correct, normalize_for_comparison
 from mllm_eval_pipeline.parser import extract_answer
 from mllm_eval_pipeline.paths import meta_path, predictions_path
 
 VERIFIER_RULE = "rule"
 VERIFIER_MAJORITY = "majority"
 VERIFIER_MAJORITY_RULE = "majority+rule"
-VERIFIERS = [VERIFIER_RULE, VERIFIER_MAJORITY, VERIFIER_MAJORITY_RULE]
+VERIFIER_ORACLE = "oracle"
+VERIFIERS = [VERIFIER_RULE, VERIFIER_MAJORITY, VERIFIER_MAJORITY_RULE, VERIFIER_ORACLE]
 
 
 def score_rule(record: dict[str, Any], response: str) -> dict[str, Any]:
@@ -144,15 +145,28 @@ SELECTORS: dict[str, Callable[[list[dict[str, Any]]], dict[str, Any]]] = {
 }
 
 
+def select_oracle(
+    record: dict[str, Any], candidates: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Pick the first candidate whose extracted answer matches ground truth.
+
+    Oracle is an upper-bound analysis, not a deployable verifier: it uses
+    the `answer` field from the record. Useful for bounding how much
+    headroom rule/majority/majority+rule leave for a learned selector.
+    """
+    for candidate in candidates:
+        checked = dict(record)
+        checked["model_answer"] = candidate["verification"]["model_answer"]
+        if is_correct(checked):
+            return candidate
+    return candidates[0]
+
+
 def verify_mathvision_predictions(
-    split: str,
-    base: str,
-    experiment: str,
-    verifier: str,
+    split: str, base: str, experiment: str, verifier: str
 ) -> None:
-    if verifier not in SELECTORS:
+    if verifier not in VERIFIERS:
         raise ValueError(f"Unknown verifier {verifier!r}; expected one of {VERIFIERS}")
-    select = SELECTORS[verifier]
 
     records = []
     changed = 0
@@ -162,7 +176,10 @@ def verify_mathvision_predictions(
         candidates = record.get("candidates") or [{"response": record["response"]}]
         candidates = scored_candidates(record, candidates)
 
-        best = select(candidates)
+        if verifier == VERIFIER_ORACLE:
+            best = select_oracle(record, candidates)
+        else:
+            best = SELECTORS[verifier](candidates)
 
         record["candidates"] = candidates
         record["selected_candidate_index"] = best["candidate_index"]
