@@ -3,17 +3,32 @@
 # LLaVA
 
 
-from pathlib import Path
-from typing import Any
+import os
 
-from PIL import Image
-from transformers import AutoProcessor
-from vllm import LLM, SamplingParams
-from vllm.inputs import TextPrompt
+# vLLM is non-deterministic by default for throughput. For pipeline
+# reproducibility we force deterministic scheduling per the official
+# docs: https://docs.vllm.ai/en/v0.19.1/usage/reproducibility/
+# (`VLLM_ENABLE_V1_MULTIPROCESSING=0` in offline mode). Verified
+# bit-identical output across two independent greedy_2048 runs on
+# Qwen2.5-VL-3B-Instruct (diff = empty). Setting via `setdefault` so
+# users can opt out by exporting the variable in their shell.
+os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
 
-from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl
-from mllm_eval_pipeline.metadata import now_iso, package_version, read_git_sha
-from mllm_eval_pipeline.paths import (
+from pathlib import Path  # noqa: E402  -- env var must be set before vllm import
+from typing import Any  # noqa: E402
+
+from PIL import Image  # noqa: E402
+from transformers import AutoProcessor  # noqa: E402
+from vllm import LLM, SamplingParams  # noqa: E402
+from vllm.inputs import TextPrompt  # noqa: E402
+
+from mllm_eval_pipeline.io import read_jsonl, write_json, write_jsonl  # noqa: E402
+from mllm_eval_pipeline.metadata import (  # noqa: E402
+    now_iso,
+    package_version,
+    read_git_sha,
+)
+from mllm_eval_pipeline.paths import (  # noqa: E402
     QWEN25_VL_3B_MODEL,
     VSTAR_SPLIT,
     mathvision_image_dir,
