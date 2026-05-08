@@ -276,23 +276,25 @@ def main() -> None:
         )
         from mllm_eval_pipeline.metrics import evaluate_mathvision, evaluate_vstar
         from mllm_eval_pipeline.parser import parse_predictions
+        from mllm_eval_pipeline.paths import VSTAR_SPLIT
         from mllm_eval_pipeline.verifier import verify_mathvision_predictions
 
         skip = set(args.skip)
+        effective_split = VSTAR_SPLIT if args.dataset == "vstar" else args.split
 
         def _heading(text: str) -> None:
             bar = "=" * (len(text) + 6)
             print(f"\n{bar}\n== {text} ==\n{bar}")
 
         if "download" not in skip:
-            _heading(f"download {args.dataset} ({args.split})")
+            _heading(f"download {args.dataset} ({effective_split})")
             if args.dataset == "mathvision":
                 download_mathvision(args.split)
             else:
                 download_vstar()
 
         if "preprocess" not in skip:
-            _heading(f"preprocess {args.dataset} ({args.split})")
+            _heading(f"preprocess {args.dataset} ({effective_split})")
             if args.dataset == "mathvision":
                 preprocess_mathvision(args.split)
             else:
